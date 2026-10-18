@@ -32,7 +32,7 @@ def _browser_order(preferred: str) -> list[str]:
 async def _probe_chat(client: GeminiClient) -> bool:
     try:
         out = await asyncio.wait_for(
-            client.generate_content("Reply with exactly: ok", model="gemini-3-flash"),
+            client.generate_content("Reply with exactly: ok", model="gemini-flash"),
             timeout=45,
         )
         return bool((out.text or "").strip())

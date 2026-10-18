@@ -89,9 +89,9 @@ def _guess_kind(model_name: str, description: str) -> str:
 def _alias_candidates(model_name: str, description: str) -> list[str]:
     aliases: set[str] = {model_name}
     blob = f"{model_name} {description}".lower()
-    if "gemini-3-flash" in model_name and "image" not in blob:
+    if "gemini-flash" in model_name and "image" not in blob:
         aliases.add("gemini-3-flash-preview")
-    if "gemini-3-pro" in model_name and "image" not in blob:
+    if "gemini-pro" in model_name and "image" not in blob:
         aliases.add("gemini-advanced")
         aliases.add("gemini-3-pro-preview")
     if "image" in blob:
@@ -194,13 +194,13 @@ class ModelRegistry:
 
     _IMAGE_ALIASES: tuple[tuple[str, str, str], ...] = (
         # (alias_id, target_id, human_name)
-        ("gemini-2.5-flash-image", "gemini-3-flash", "Gemini 2.5 Flash Image (nano-banana)"),
+        ("gemini-2.5-flash-image", "gemini-flash", "Gemini 2.5 Flash Image (nano-banana)"),
         # The pro image alias is kept so resolve_id() still routes
         # 'gemini-2.5-pro-image' to 'gemini-3-pro' for clients that
         # try it, but list_openai_models() no longer advertises it
         # because on most accounts gemini-3-pro is currently rejected
         # by Google's image-generation pipeline.
-        ("gemini-2.5-pro-image", "gemini-3-pro", "Gemini 2.5 Pro Image (nano-banana-pro)"),
+        ("gemini-2.5-pro-image", "gemini-pro", "Gemini 2.5 Pro Image (nano-banana-pro)"),
     )
 
     _IMAGE_ALIAS_IDS: frozenset[str] = frozenset(a for a, _, _ in _IMAGE_ALIASES)
@@ -294,7 +294,7 @@ class ModelRegistry:
                 return entry.id
         if self._entries:
             return next(iter(self._entries.keys()))
-        return "gemini-3-flash"
+        return "gemini-flash"
 
     def pick_chat_model(self, requested: str | None = None) -> str:
         if requested:
@@ -308,7 +308,7 @@ class ModelRegistry:
         for entry in self._entries.values():
             if "image" not in entry.id.lower():
                 return entry.id
-        return "gemini-3-flash"
+        return "gemini-flash"
 
     def update_probe(
         self, model_id: str, *, chat_ok: bool | None = None, image_ok: bool | None = None

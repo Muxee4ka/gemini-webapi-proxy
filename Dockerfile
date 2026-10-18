@@ -86,7 +86,7 @@ RUN python -m pip install --no-cache-dir hatchling && \
         "httpx>=0.27" \
         "curl-cffi>=0.7" \
         "playwright>=1.49" \
-        "gemini-webapi>=2.0" \
+        "gemini-webapi>=2.1.1,<3" \
         "python-dotenv>=1.0"
 
 # Install Playwright's Chromium browser binary.

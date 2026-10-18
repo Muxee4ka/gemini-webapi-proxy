@@ -98,8 +98,8 @@ class Settings(BaseSettings):
     # generation in 2026-Q2: gemini-3-flash and gemini-3-pro.
     image_model_overrides: list[str] = Field(
         default_factory=lambda: [
-            "gemini-3-flash",
-            "gemini-3-pro",
+            "gemini-flash",
+            "gemini-pro",
         ]
     )
 
