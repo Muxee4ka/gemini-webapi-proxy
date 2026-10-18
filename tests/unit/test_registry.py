@@ -310,3 +310,29 @@ def test_image_aliases_present_after_load_file(tmp_path) -> None:
 
 def _mk(name: str, display: str, desc: str) -> ModelDescriptor:
     return ModelDescriptor(name=name, display_name=display, description=desc)
+
+
+def test_resolve_runtime_refreshes_model_list_on_miss(monkeypatch) -> None:
+    """A model missing at init (exhausted quota) is picked up after a status refresh."""
+    import asyncio
+
+    from gemini_webapi_proxy.services import chat as service
+
+    r = ModelRegistry()
+    r.sync_from_client([_mk("gemini-flash-lite", "Flash-Lite", "fast")])
+    monkeypatch.setattr(service, "registry", r)
+    monkeypatch.setattr(service, "_models_refreshed_at", 0.0)
+
+    class Client:
+        def __init__(self) -> None:
+            self.models = [_mk("gemini-flash-lite", "Flash-Lite", "fast")]
+
+        async def _fetch_user_status(self):
+            self.models = [*self.models, _mk("gemini-flash", "Flash", "all-around")]
+
+        def list_models(self):
+            return self.models
+
+    runtime = asyncio.run(service._resolve_runtime(Client(), "gemini-flash"))
+    assert getattr(runtime, "model_name", runtime) == "gemini-flash"
+    assert not isinstance(runtime, str)

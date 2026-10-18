@@ -117,6 +117,9 @@ class ModelRegistry:
     def entries(self) -> list[ModelEntry]:
         return list(self._entries.values())
 
+    def entry_ids(self) -> set[str]:
+        return set(self._entries)
+
     def load_file(self, path: Path = REGISTRY_PATH) -> None:
         if not path.exists():
             self._ensure_image_aliases()

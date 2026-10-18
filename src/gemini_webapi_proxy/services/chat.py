@@ -31,6 +31,36 @@ QUOTA_PATTERNS = (
 )
 
 
+_MODELS_REFRESH_INTERVAL = 60.0
+_models_refreshed_at = 0.0
+
+
+async def _resolve_runtime(client, model_id: str):
+    """Resolve a model, re-reading the account's model list once a minute on a miss.
+
+    gemini-webapi builds its model list only in ``init()``.  Models the account cannot
+    use at that moment (exhausted quota) are missing from it and would stay missing
+    until a restart, even after the quota resets.
+    """
+    global _models_refreshed_at
+    runtime = registry.resolve_runtime(model_id)
+    # A fuzzy match (gemini-flash -> gemini-flash-lite) is not the model asked for.
+    exact = model_id in registry.entry_ids()
+    if exact and not isinstance(runtime, str):
+        return runtime
+    now = time.monotonic()
+    refresh = getattr(client, "_fetch_user_status", None)
+    if refresh is None or now - _models_refreshed_at < _MODELS_REFRESH_INTERVAL:
+        return runtime
+    _models_refreshed_at = now
+    try:
+        await refresh()
+    except Exception:  # best effort: keep the old list
+        return runtime
+    registry.sync_from_client(client.list_models())
+    return registry.resolve_runtime(model_id)
+
+
 def _quota_message(text: str) -> bool:
     blob = text.lower()
     return any(re.search(p, blob, re.I) for p in QUOTA_PATTERNS)
@@ -95,7 +125,7 @@ async def create_chat_completion(
 ) -> ChatCompletionResponse:
     client = await get_client(settings)
     resolved = registry.resolve_id(model)
-    runtime = registry.resolve_runtime(resolved)
+    runtime = await _resolve_runtime(client, resolved)
     prompt, msg_refs = _messages_to_prompt_and_refs(messages)
     ref_paths: list[Path] = []
     if msg_refs:
@@ -147,7 +177,7 @@ async def create_image_generation(
 ) -> ImageGenerationResponse:
     client = await get_client(settings)
     target = registry.pick_image_model(model)
-    runtime = registry.resolve_runtime(target)
+    runtime = await _resolve_runtime(client, target)
     refs = normalize_image_field(reference_images)
     ref_paths: list[Path] = []
     if refs:
