@@ -32,20 +32,92 @@ def test_models_route_returns_503_when_no_client() -> None:
         assert "data" in resp.json()
 
 
-def test_chat_rejects_stream(monkeypatch) -> None:
-    """``stream=true`` must return 400 with a helpful message."""
-    from gemini_webapi_proxy.config import reset_settings_cache
+def _fake_completion(text: str):
+    from gemini_webapi_proxy.schemas import ChatCompletionChoice, ChatCompletionResponse
 
-    monkeypatch.setenv("GOP_COOKIE_SOURCE", "env")
-    reset_settings_cache()
+    async def fake(settings, *, model, messages):
+        fake.messages = messages
+        return ChatCompletionResponse(
+            id="chatcmpl-test",
+            created=0,
+            model=model,
+            choices=[ChatCompletionChoice(message={"role": "assistant", "content": text})],
+        )
+
+    return fake
+
+
+TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_weather",
+            "description": "Weather for a city",
+            "parameters": {"type": "object", "properties": {"city": {"type": "string"}}},
+        },
+    }
+]
+
+
+def test_chat_stream_sends_sse(monkeypatch) -> None:
+    """``stream=true`` is answered with SSE chunks ending in [DONE]."""
+    from gemini_webapi_proxy.routes import chat
+
+    monkeypatch.setattr(chat, "create_chat_completion", _fake_completion("pong"))
     with TestClient(app) as client:
         resp = client.post(
             "/openai/v1/chat/completions",
             json={
-                "model": "gemini-3-flash",
+                "model": "gemini-flash",
                 "stream": True,
                 "messages": [{"role": "user", "content": "hi"}],
             },
         )
-    assert resp.status_code == 400
-    assert "stream" in resp.json()["detail"].lower()
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/event-stream")
+    assert '"content": "pong"' in resp.text
+    assert resp.text.rstrip().endswith("data: [DONE]")
+
+
+def test_chat_emulates_tool_calls(monkeypatch) -> None:
+    """A <tool_calls> block in the answer becomes OpenAI tool_calls."""
+    from gemini_webapi_proxy.routes import chat
+
+    fake = _fake_completion(
+        'Checking.<tool_calls>\n[{"name": "get_weather", "arguments": {"city": "Moscow"}}]\n</tool_calls>'
+    )
+    monkeypatch.setattr(chat, "create_chat_completion", fake)
+    with TestClient(app) as client:
+        resp = client.post(
+            "/openai/v1/chat/completions",
+            json={
+                "model": "gemini-flash",
+                "tools": TOOLS,
+                "messages": [{"role": "user", "content": "weather?"}],
+            },
+        )
+    choice = resp.json()["choices"][0]
+    assert choice["finish_reason"] == "tool_calls"
+    assert choice["message"]["content"] == "Checking."
+    call = choice["message"]["tool_calls"][0]
+    assert call["function"]["name"] == "get_weather"
+    assert call["function"]["arguments"] == '{"city": "Moscow"}'
+    assert any("get_weather" in m.content for m in fake.messages if m.role == "system")
+
+
+def test_chat_without_block_is_plain_text(monkeypatch) -> None:
+    from gemini_webapi_proxy.routes import chat
+
+    monkeypatch.setattr(chat, "create_chat_completion", _fake_completion("Sunny."))
+    with TestClient(app) as client:
+        resp = client.post(
+            "/openai/v1/chat/completions",
+            json={
+                "model": "gemini-flash",
+                "tools": TOOLS,
+                "messages": [{"role": "user", "content": "x"}],
+            },
+        )
+    choice = resp.json()["choices"][0]
+    assert choice["finish_reason"] == "stop"
+    assert choice["message"]["content"] == "Sunny."
