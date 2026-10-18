@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from gemini_webapi_proxy import __version__
 from gemini_webapi_proxy.client.pool import lifespan
 from gemini_webapi_proxy.logging import configure_logging
-from gemini_webapi_proxy.routes import admin, chat, health, images, models
+from gemini_webapi_proxy.routes import admin, chat, health, images, models, videos
 
 # Initialise logging before anything else gets a chance to log.
 configure_logging()
@@ -31,7 +31,7 @@ app = FastAPI(
 logger.info("gemini-webapi-proxy v%s initialised", __version__)
 
 # Mount routers. Order does not matter.
-for r in (health.router, models.router, chat.router, images.router, admin.router):
+for r in (health.router, models.router, chat.router, images.router, videos.router, admin.router):
     app.include_router(r)
 
 

@@ -35,6 +35,13 @@ Drop-in `base_url` replacement for any OpenAI client — **no API key, reuses yo
 > - tool-calling emulation for agent clients (OpenClaw etc.): tool specs go into the prompt,
 >   a `<tool_calls>[...]</tool_calls>` block in the answer becomes OpenAI `tool_calls`;
 > - upstream refusal mapped to 502 instead of 403 (clients treat 403 as broken auth).
+> - `POST /openai/v1/images/edits` — instruction-based edits of an uploaded image;
+> - video generation (Veo via Gemini Web) in the OpenAI Videos API shape: `POST /openai/v1/videos`
+>   (`prompt`, optional `input_reference` image) → job; `GET /openai/v1/videos/{id}` → status;
+>   `GET /openai/v1/videos/{id}/content` → mp4. Jobs run one at a time and are never retried
+>   automatically (a re-sent prompt burns the daily video limit). An image instead of a video
+>   means the video limit is used up (`error.code = video_limit_reached`);
+> - exhausted Gemini quota → HTTP 429; the model list is re-read when a model is missing.
 
 ---
 

@@ -79,6 +79,9 @@ class Settings(BaseSettings):
     # -- Behaviour --------------------------------------------------------
     chat_timeout: float = 180.0
     image_timeout: float = 300.0
+    # Veo clips take minutes; the job runs in the background, this caps one job.
+    video_timeout: float = 900.0
+    video_keep_hours: float = 24.0
     init_timeout: float = 120.0
     probe_on_start: bool = False
     probe_models: bool = True
