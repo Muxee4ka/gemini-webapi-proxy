@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `GET /openai/v1/videos/{id}`, `GET /openai/v1/videos/{id}/content`
 - `GOP_VIDEO_TIMEOUT`, `GOP_VIDEO_KEEP_HOURS`; `GEMINI_COOKIE_PATH` in `docker-compose.yml`
 - OpenClaw integration: `docs/openclaw.md`, `integrations/openclaw/gemini-video` skill
+- Cookie source `cdp`: cookies come from a long-running Chrome over DevTools
+  (`GOP_CDP_URL`, `GOP_CDP_REFRESH_SECONDS`); the proxy does not rotate them itself.
+  Container in `integrations/cdp-browser`
 
 ### Changed
 - `gemini-webapi` ≥ 2.1.1: the model list is the account's live list
@@ -22,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Chat refusals are 502 instead of 403; exhausted quota is 429 instead of 500
 - A missing model triggers a re-read of the account's model list (at most once a minute)
 - `docs/api.md` rewritten in English with the new endpoints
+- An unauthenticated client is re-initialised at most once a minute instead of on
+  every failing request
 
 ## [0.1.0] - 2026-06-23
 

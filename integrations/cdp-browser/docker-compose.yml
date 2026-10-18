@@ -1,0 +1,14 @@
+# Run next to the proxy (both on the host network) and set in the proxy:
+#   GOP_COOKIE_SOURCE=cdp
+#   GOP_CDP_URL=http://127.0.0.1:9223
+services:
+  gemini-browser:
+    build: .
+    image: gemini-cdp-browser:local
+    container_name: gemini-browser
+    network_mode: host
+    volumes:
+      - ./profile:/data/profile
+    shm_size: 256m
+    mem_limit: 1g
+    restart: unless-stopped

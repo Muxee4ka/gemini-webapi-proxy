@@ -62,6 +62,8 @@ async def map_api_error(exc: Exception, settings: Settings) -> JSONResponse:
             msg: CookieExpiredError = CookieExpiredError.for_browser_mode()
         elif settings.cookie_source == "file":
             msg = CookieExpiredError.for_file_mode()
+        elif settings.cookie_source == "cdp":
+            msg = CookieExpiredError.for_cdp_mode()
         else:
             msg = CookieExpiredError.for_env_mode()
         return error_json(str(msg), 401)

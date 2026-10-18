@@ -62,6 +62,13 @@ class CookieExpiredError(ImageExportError):
         )
 
     @classmethod
+    def for_cdp_mode(cls) -> CookieExpiredError:
+        return cls(
+            "Gemini cookies are missing or stale. The browser at GOP_CDP_URL must be "
+            "signed in to gemini.google.com; the next request re-reads its cookies."
+        )
+
+    @classmethod
     def for_file_mode(cls) -> CookieExpiredError:
         return cls(
             "Gemini cookies in GOP_COOKIE_FILE are missing or stale. Re-export "

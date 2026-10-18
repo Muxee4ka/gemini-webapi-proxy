@@ -24,7 +24,9 @@ cached for the process lifetime. Set them before launching the server.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GOP_COOKIE_SOURCE` | `browser` | One of `browser` / `env` / `file`. |
+| `GOP_COOKIE_SOURCE` | `browser` | One of `browser` / `env` / `file` / `cdp`. |
+| `GOP_CDP_URL` | `http://127.0.0.1:9223` | `cdp` only: DevTools endpoint of the browser that owns the session. |
+| `GOP_CDP_REFRESH_SECONDS` | `600` | `cdp` only: how often the browser's cookies are re-read (the Gemini tab is reloaded first). |
 | `GOP_BROWSER` | `auto` | When `cookie_source=browser`, which browser to read from. `auto` picks the first installed (Safari first on macOS, Chrome first on Linux). |
 | `GOP_COOKIE_FILE` | _(empty)_ | When `cookie_source=file`, path to a Netscape-format `cookies.txt`. |
 | `GOP_GEMINI_1PSID` | _(empty)_ | `__Secure-1PSID` value (env / file modes). |
@@ -66,7 +68,7 @@ source and a worked example of exporting a `cookies.txt`.
 | `GOP_DATA_DIR` | `./data` | Where the model registry file lives. |
 | `GOP_REGISTRY_FILE` | `model_registry.json` | File name within `GOP_DATA_DIR`. |
 | `GOP_VIDEO_KEEP_HOURS` | `24` | Finished videos (`GOP_DATA_DIR/videos/*.mp4`) and their jobs are dropped after this many hours. |
-| `GEMINI_COOKIE_PATH` | _(temp dir)_ | Read by `gemini-webapi`, not by the proxy: where rotated cookies are cached. Point it into a persistent volume (the compose file uses `/app/data/cookie-cache`). Otherwise a restart can fall back to the original, already rotated `__Secure-1PSIDTS`, the session turns into a logged-out guest and only `gemini-flash-lite` is listed. |
+| `GEMINI_COOKIE_PATH` | _(temp dir)_ | Read by `gemini-webapi`, not by the proxy: where rotated cookies are cached. Not needed with `cdp`: the cache is cleared before each client init, the browser's jar is always fresher. For `env` / `file`, point it into a persistent volume (the compose file uses `/app/data/cookie-cache`). Otherwise a restart can fall back to the original, already rotated `__Secure-1PSIDTS`, the session turns into a logged-out guest and only `gemini-flash-lite` is listed. |
 
 ## Downloader chain
 

@@ -65,8 +65,11 @@ class Settings(BaseSettings):
     api_key: str | None = None
 
     # -- Cookie source ----------------------------------------------------
-    cookie_source: Literal["browser", "env", "file"] = "browser"
+    cookie_source: Literal["browser", "env", "file", "cdp"] = "browser"
     browser: str = "auto"  # auto / safari / chrome / edge / brave / chromium
+    # cdp: a long-running Chrome that owns the Google session (see cookies/cdp.py)
+    cdp_url: str = "http://127.0.0.1:9223"
+    cdp_refresh_seconds: float = 600.0  # re-read the browser's cookies this often
     cookie_file: Path | None = None  # Netscape-format cookie file
     gemini_1psid: str | None = None
     gemini_1psidts: str | None = None
