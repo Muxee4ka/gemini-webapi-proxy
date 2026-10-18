@@ -77,6 +77,9 @@ client — without copy-pasting prompts into the web UI.
 - [🚀 Quick Start](#-quick-start)
 - [🔌 Wiring a client](#-wiring-a-client)
 - [🖼 Image generation](#-image-generation)
+- [✏️ Image edits](#️-image-edits)
+- [🎬 Video generation](#-video-generation)
+- [🦀 OpenClaw](#-openclaw)
 - [⚙️ Configuration](#-configuration)
 - [🏗 Architecture](#-architecture)
 - [🐳 Deployment & operations](#-deployment--operations)
@@ -92,14 +95,17 @@ client — without copy-pasting prompts into the web UI.
 ## ✨ Features
 
 - 🪄 **Drop-in OpenAI API** — point any OpenAI client (Python SDK, OpenAI CLI, ChatBox, NextChat, LobeChat, Outsider Studio, …) at `http://localhost:4982/openai`
-- 💬 **Chat completions** — non-streaming JSON, multi-turn, reference images
+- 💬 **Chat completions** — multi-turn, reference images, `stream=true` (SSE)
+- 🧰 **Tool calling (emulated)** — OpenAI `tools` / `tool_calls` for agent clients, via a `<tool_calls>` block in the prompt
 - 🖼 **Image generation** — base64 output only (no CDN URL leakage), text-to-image + reference-image-to-image
+- ✏️ **Image edits** — `POST /openai/v1/images/edits`: upload an image, describe the change
+- 🎬 **Video generation (Veo)** — OpenAI Videos API shape: `POST /openai/v1/videos` → job → mp4
 - 🍪 **Pluggable cookie sources** — desktop browser (Safari/Chrome/…), env vars, Netscape cookie file
 - 🐳 **One-command Docker** — `docker compose up -d`, auto-restart, host network bridge for the local proxy
 - 🔌 **Multi-fallback image download** — Playwright Chromium → httpx → curl_cffi → library save
-- 🛡 **Upstream refusal detection** — Gemini "I cannot fulfill…" answers mapped to HTTP 403, not 200
+- 🛡 **Upstream refusal detection** — Gemini "I cannot fulfill…" answers become errors (403 images / 502 chat), exhausted quota → 429
 - 🛠 **Optional API key** — `GOP_API_KEY=...` enables Bearer auth; empty = off (local-only default)
-- 📋 **Curated model list** — advertises a small fixed set of `gemini-3-*` chat and `gemini-2.5-*-image` aliases via `/openai/v1/models`
+- 📋 **Live model list** — the account's models (`gemini-flash`, `gemini-pro`, `gemini-argon`, `gemini-flash-lite`) plus stable `gemini-2.5-*-image` aliases via `/openai/v1/models`
 
 ## 🚀 Quick Start
 
@@ -161,14 +167,14 @@ client = OpenAI(
 )
 
 resp = client.chat.completions.create(
-    model="gemini-3-flash",
+    model="gemini-flash",
     messages=[{"role": "user", "content": "Reply with exactly: pong"}],
 )
 print(resp.choices[0].message.content)
 ```
 
-Curated chat models: `gemini-3-flash`, `gemini-3-pro`. See what your
-deployment advertises with:
+Chat models come from the Gemini account: `gemini-flash`, `gemini-pro`,
+`gemini-argon`, `gemini-flash-lite`. See what your deployment advertises with:
 
 ```bash
 curl -sS http://localhost:4982/openai/v1/models | python3 -m json.tool
@@ -214,6 +220,43 @@ downstream clients can't fetch `lh3.googleusercontent.com/...` directly.
 See [docs/api.md](docs/api.md#reference-images) and
 [docs/downloaders.md](docs/downloaders.md) for the download chain.
 
+## ✏️ Image edits
+
+```bash
+curl -sS -m 300 http://localhost:4982/openai/v1/images/edits \
+  -H "Authorization: Bearer $KEY" \
+  -F model=gemini-2.5-flash-image \
+  -F "prompt=Add a modern kitchen along the right wall. Keep the window and the floor." \
+  -F "image=@room.jpg;type=image/jpeg"
+```
+
+Same as OpenAI `client.images.edit(...)`. Gemini edits by instruction; `mask` is ignored.
+
+## 🎬 Video generation
+
+```python
+import time, httpx
+
+api = httpx.Client(base_url="http://localhost:4982/openai/v1",
+                   headers={"Authorization": f"Bearer {KEY}"}, timeout=60)
+job = api.post("/videos", json={"prompt": "a ginger cat in a space helmet floating in a space station"}).json()
+while job["status"] not in ("completed", "failed"):
+    time.sleep(15)
+    job = api.get(f"/videos/{job['id']}").json()
+if job["status"] == "completed":
+    open("cat.mp4", "wb").write(api.get(f"/videos/{job['id']}/content").content)
+else:
+    print(job["error"])  # video_limit_reached / refused / upstream_glitch
+```
+
+A clip (~8 s) takes 1–3 minutes. Pass `input_reference` (an image file or URL) to animate
+a picture. Jobs run one at a time and are never retried automatically: every attempt
+spends the account's daily video limit. Details: [docs/api.md](docs/api.md#videos-veo).
+
+## 🦀 OpenClaw
+
+Chat models, `image_generate` and a video skill — see [docs/openclaw.md](docs/openclaw.md).
+
 ## ⚙️ Configuration
 
 All configuration is via environment variables. The `GOP_` prefix is
@@ -238,7 +281,10 @@ are kept as legacy aliases for compatibility.
 | `GOP_PROBE_ON_START` | `false` | probe models at startup |
 | `GOP_LOG_FORMAT` | `console` | `console` (dev) or `json` (container) |
 | `GOP_LOG_LEVEL` | `INFO` | `DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL` |
-| `GOP_DATA_DIR` | `./data` | where the model registry file lives |
+| `GOP_DATA_DIR` | `./data` | model registry, generated videos |
+| `GOP_VIDEO_TIMEOUT` | `900` | seconds for one background video job |
+| `GOP_VIDEO_KEEP_HOURS` | `24` | how long finished videos are kept |
+| `GEMINI_COOKIE_PATH` | _(temp dir)_ | where `gemini-webapi` caches rotated cookies; keep it in a volume |
 
 See [docs/configuration.md](docs/configuration.md) for the full list and
 detailed semantics.
@@ -249,7 +295,9 @@ detailed semantics.
 ┌─────────────── FastAPI (uvicorn) ───────────────┐
 │  /health    /ready                              │
 │  /openai/v1/models  /openai/v1/chat/completions │
-│  /openai/v1/images/generations  /admin/probe-models │
+│  /openai/v1/images/generations  /images/edits   │
+│  /openai/v1/videos[/{id}[/content]]             │
+│  /admin/probe-models                            │
 │                                                 │
 │  ┌─────────────┐   ┌──────────────────┐         │
 │  │ Cookie      │ → │ GeminiClient pool│ → gemini-webapi
@@ -271,9 +319,9 @@ detailed semantics.
   implementation wraps `gemini-webapi`; future backends can implement
   `BaseGeminiClient` without touching the rest of the code.
 - **Curated model registry** (`gemini_webapi_proxy.client.registry`) —
-  two chat entries (`gemini-3-flash`, `gemini-3-pro`) and two stable
+  the account's chat models (`gemini-flash`, `gemini-pro`, …) and two stable
   image aliases (`gemini-2.5-flash-image`, `gemini-2.5-pro-image`).
-  The reverse-alias index is guarded so that asking for `gemini-3-pro`
+  The reverse-alias index is guarded so that asking for `gemini-pro`
   can never route to an image alias by accident.
 
 See [docs/architecture.md](docs/architecture.md) for the deeper data flow
@@ -293,7 +341,9 @@ b64 response).
 
 ## 🛣 Roadmap
 
-- [ ] **Streaming chat completions** (SSE) — currently `stream=true` returns 400
+- [x] **Streaming chat completions** (SSE) — answer generated in full, then streamed
+- [x] **Tool calling** — emulated through the prompt
+- [x] **Image edits and video generation**
 - [ ] **Pluggable Gemini backends** — official Gemini API, third-party proxies
 - [ ] **More cookie sources** — Playwright storage state export, Firefox via `browser-cookie3`
 - [ ] **Per-model rate limits** — token-bucket per model id

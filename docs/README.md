@@ -8,7 +8,8 @@
 | [architecture.md](./architecture.md) | Deep dive: data flow, registry, pluggable seams |
 | [downloaders.md](./downloaders.md) | Image download chain and how to extend it |
 | [studio.md](./studio.md) | Wiring an OpenAI-compatible client to the proxy |
-| [api.md](./api.md) | OpenAI-compatible API reference |
+| [api.md](./api.md) | OpenAI-compatible API reference: chat (streaming, tool calling), images, edits, videos |
+| [openclaw.md](./openclaw.md) | Using the proxy from OpenClaw: chat models, `image_generate`, video skill |
 | [docker.md](./docker.md) | Docker, Compose, and bare-metal deployment |
 | [troubleshooting.md](./troubleshooting.md) | Common errors and fixes |
 | [../README.zh.md](../README.zh.md) | Chinese (中文) README |
@@ -38,10 +39,11 @@ src/gemini_webapi_proxy/   importable package
   cookies/                 pluggable cookie sources
   client/                  Gemini client + registry + pool
   downloaders/             image download chain
-  services/                chat / image / probe
+  services/                chat / image / video / probe
   routes/                  FastAPI routers
   utils/                   small helpers
 scripts/                   dev / ops shell scripts
+integrations/openclaw/     OpenClaw skill for video generation
 tests/                     pytest suites
 docs/                      you are here
 data/                      runtime data (gitignored)

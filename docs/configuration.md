@@ -48,6 +48,7 @@ source and a worked example of exporting a `cookies.txt`.
 | `GOP_CHAT_TIMEOUT` | `180` | Seconds for a single chat completion. |
 | `GOP_IMAGE_TIMEOUT` | `300` | Seconds for a single image generation + download. |
 | `GOP_INIT_TIMEOUT` | `120` | Seconds for the first-time Gemini client init. |
+| `GOP_VIDEO_TIMEOUT` | `900` | Seconds for one video job: generation plus download. The job runs in the background, so this does not hold an HTTP request open. |
 
 ## Behaviour
 
@@ -55,7 +56,7 @@ source and a worked example of exporting a `cookies.txt`.
 |----------|---------|-------------|
 | `GOP_PROBE_ON_START` | `false` | Probe every model at startup. Slow; turn on only when debugging. |
 | `GOP_PROBE_MODELS` | `true` | Allow probing via `POST /admin/probe-models`. |
-| `GOP_ENABLE_STREAM` | `false` | Reserved for the upcoming streaming implementation; currently unused. |
+| `GOP_ENABLE_STREAM` | `false` | Unused: `stream=true` is always accepted (the answer is generated in full, then sent as SSE). |
 | `GOP_WEBAPI_MAX_RETRY` | `1` | Maximum automatic retries for `gemini-webapi`'s RPC layer. Default 1 instead of upstream's 5 so the proxy can fail fast and surface real errors to the client. |
 
 ## Data and storage
@@ -64,6 +65,8 @@ source and a worked example of exporting a `cookies.txt`.
 |----------|---------|-------------|
 | `GOP_DATA_DIR` | `./data` | Where the model registry file lives. |
 | `GOP_REGISTRY_FILE` | `model_registry.json` | File name within `GOP_DATA_DIR`. |
+| `GOP_VIDEO_KEEP_HOURS` | `24` | Finished videos (`GOP_DATA_DIR/videos/*.mp4`) and their jobs are dropped after this many hours. |
+| `GEMINI_COOKIE_PATH` | _(temp dir)_ | Read by `gemini-webapi`, not by the proxy: where rotated cookies are cached. Point it into a persistent volume (the compose file uses `/app/data/cookie-cache`). Otherwise a restart can fall back to the original, already rotated `__Secure-1PSIDTS`, the session turns into a logged-out guest and only `gemini-flash-lite` is listed. |
 
 ## Downloader chain
 

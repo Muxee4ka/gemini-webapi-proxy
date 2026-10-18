@@ -12,7 +12,7 @@ SDK, `openai-cli`, `ChatBox`, `NextChat`, `LobeChat`, and others.
 | Provider | Custom OpenAI-compatible (or "OpenAI" with a custom base URL) |
 | Base URL | `http://localhost:4982/openai` |
 | API Key | Any non-empty string (e.g. `test`). The proxy does not verify it by default. |
-| Chat model | `gemini-3-flash` / `gemini-3-pro` (use whatever `/openai/v1/models` advertises) |
+| Chat model | `gemini-flash` / `gemini-argon` / `gemini-pro` / `gemini-flash-lite` (use whatever `/openai/v1/models` advertises) |
 | Image model | `gemini-2.5-flash-image` / `gemini-2.5-pro-image` (stable aliases — chat ids won't be routed to the image pipeline) |
 
 > The Base URL **must end with `/openai`**. Most clients append
@@ -58,7 +58,7 @@ client = OpenAI(
 )
 
 resp = client.chat.completions.create(
-    model="gemini-3-flash",
+    model="gemini-flash",
     messages=[{"role": "user", "content": "Reply with exactly: pong"}],
 )
 print(resp.choices[0].message.content)
@@ -75,7 +75,7 @@ data_url = f"data:image/png;base64,{img_b64}"
 
 client = OpenAI(base_url="http://localhost:4982/openai/v1", api_key="x")
 resp = client.images.generate(
-    model="gemini-3-flash",
+    model="gemini-flash",
     prompt="a portrait in the same style as the reference",
     n=1,
     size="1024x1024",

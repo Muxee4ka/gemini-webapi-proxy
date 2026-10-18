@@ -5,6 +5,24 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] — fork Muxee4ka/gemini-webapi-proxy
+
+### Added
+- `stream=true` for chat completions (the answer is generated in full, then sent as SSE)
+- Tool-calling emulation: OpenAI `tools` → prompt block, `<tool_calls>` answer → `tool_calls`
+- `POST /openai/v1/images/edits` — instruction-based edits of uploaded images
+- Video generation (Veo) in the OpenAI Videos API shape: `POST /openai/v1/videos`,
+  `GET /openai/v1/videos/{id}`, `GET /openai/v1/videos/{id}/content`
+- `GOP_VIDEO_TIMEOUT`, `GOP_VIDEO_KEEP_HOURS`; `GEMINI_COOKIE_PATH` in `docker-compose.yml`
+- OpenClaw integration: `docs/openclaw.md`, `integrations/openclaw/gemini-video` skill
+
+### Changed
+- `gemini-webapi` ≥ 2.1.1: the model list is the account's live list
+  (`gemini-flash`, `gemini-pro`, `gemini-argon`, `gemini-flash-lite`); image aliases route there
+- Chat refusals are 502 instead of 403; exhausted quota is 429 instead of 500
+- A missing model triggers a re-read of the account's model list (at most once a minute)
+- `docs/api.md` rewritten in English with the new endpoints
+
 ## [0.1.0] - 2026-06-23
 
 ### Added

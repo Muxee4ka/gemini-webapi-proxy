@@ -31,7 +31,11 @@ bash scripts/e2e-image.sh
 | `Unknown model name: gemini-2.5-pro-image` despite asking for `gemini-3-pro` | **Fixed in 0.1.0** — old image had a routing bug | `docker compose pull && docker compose up -d --force-recreate` |
 | `docker ps` shows `unhealthy` but `/health` returns ok | Old healthcheck used `curl`; the image now uses `urllib` | Pull the new image: `docker compose pull && docker compose up -d --force-recreate` |
 | Image-generation prompt rejected as "I cannot fulfill" but text-only chat is fine | Specific safety filter hit on the image pipeline | Re-phrase the prompt (no human faces, copyrighted characters, etc.) or use the Flash model which has looser filters |
-| Upstream `quota_message` (e.g. "you've reached your limit") | Free-tier quota exhausted for the day | Wait for the quota to reset (typically 24h) or switch to a different Google account |
+| HTTP 429 `Gemini usage limit reached: … as soon as your limit resets` | The account's quota is used up (logs show `Account quota EXHAUSTED … Resets: <time>`) | Wait for the reset time from the log. Long agent prompts with tool specs spend quota fast |
+| `/models` lists only `gemini-flash-lite`; `Unknown model name: 'gemini-2.5-flash-image'` | The session is logged out (log: `Account status: UNAUTHENTICATED`), a guest session sees only the default model. Usually a restart reused a stale `__Secure-1PSIDTS` | Export fresh cookies; set `GEMINI_COOKIE_PATH` to a persistent dir so rotated cookies survive restarts |
+| Video job `failed` with `video_limit_reached` | Daily video limit used up; Gemini drew an image instead of a video | Wait for the reset; do not resubmit in a loop |
+| Video job `failed` with `refused` | Gemini refused the prompt | Remove brand, cartoon, celebrity and real people's names; describe the scene and motion |
+| `403` with `error code: 1010` from a script behind Cloudflare | Cloudflare blocks the client's signature (e.g. `Python-urllib`) | Send a browser-like `User-Agent` |
 
 ## Cookie cache
 

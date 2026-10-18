@@ -73,7 +73,7 @@ sequenceDiagram
   C->>F: POST /openai/v1/chat/completions
   F->>S: create_chat_completion(...)
   S->>R: pick_chat_model(model) → resolve_id → resolve_runtime
-  R-->>S: AvailableModel("gemini-3-flash", ...)
+  R-->>S: AvailableModel("gemini-flash", ...)
   S->>G: client.generate_content(prompt, files=?, model=runtime)
   G->>U: RPC with __Secure-1PSID cookie
   U-->>G: Output(text, images)
@@ -86,12 +86,12 @@ Key seams:
 
 - **`pick_chat_model(requested)`** — first tries the requested model;
   falls back to any `chat_ok` entry, then any non-image id. This is
-  what lets clients send `gemini-3-pro` *or* `gemini-3-flash` *or*
+  what lets clients send `gemini-pro` *or* `gemini-flash` *or*
   legacy auto-aliases and always land on a real backend.
 - **`resolve_runtime(model_id)`** — when the resolved id is a stable
   image alias not present in `_runtime` (e.g. `gemini-2.5-flash-image`),
   fall through to its first `.aliases` entry which IS a real
-  `gemini-webapi.AvailableModel` (typically `gemini-3-flash`).
+  `gemini-webapi.AvailableModel` (typically `gemini-flash`).
 - **`generate_content(...)`** — single network round trip; bounded by
   `GOP_CHAT_TIMEOUT` (default 180s) via `asyncio.wait_for`.
 
@@ -110,7 +110,7 @@ sequenceDiagram
   C->>F: POST /openai/v1/images/generations
   F->>S: create_image_generation(...)
   S->>R: pick_image_model(model) → resolve_id → resolve_runtime
-  R-->>S: AvailableModel("gemini-3-flash", ...)  [via 2.5-flash-image alias]
+  R-->>S: AvailableModel("gemini-flash", ...)  [via 2.5-flash-image alias]
   S->>G: client.generate_content(prompt, files=?, model=runtime)
   G->>U: RPC; returns GeneratedImage(url=https://lh3.googleusercontent.com/...)
   U-->>G: RPC response (text + image URLs)
@@ -147,7 +147,7 @@ Returns a small fixed set:
    with `image=true`, regardless of whether the underlying model is
    currently available. The 403/refusal surfaces at request time.
 2. **Chat entries second.** One entry per distinct `chat_ok` backend
-   (currently `gemini-3-flash` plus, when present, `gemini-3-pro`).
+   (whatever the account offers: `gemini-flash`, `gemini-pro`, `gemini-argon`, `gemini-flash-lite`).
 3. **Auto-generated aliases are NEVER exposed.** Even if
    `gemini-webapi` returns `gemini-3-flash-preview`, `gemini-2.5-flash`,
    `gemini-3-pro-plus`, etc., the public model list never includes
@@ -170,8 +170,8 @@ def resolve_id(self, model_id: str) -> str:
     for entry in self._entries.values():
         # STABLE IMAGE ALIASES ARE SKIPPED HERE.
         # Their .aliases = [target_id] is forward-only
-        # (gemini-2.5-pro-image -> gemini-3-pro), so
-        # reverse-matching would make resolve_id("gemini-3-pro")
+        # (gemini-2.5-pro-image -> gemini-pro), so
+        # reverse-matching would make resolve_id("gemini-pro")
         # return "gemini-2.5-pro-image" — wrong direction.
         if entry.id in self._IMAGE_ALIAS_IDS:
             continue
