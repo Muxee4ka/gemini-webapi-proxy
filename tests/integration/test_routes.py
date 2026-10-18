@@ -121,3 +121,34 @@ def test_chat_without_block_is_plain_text(monkeypatch) -> None:
     choice = resp.json()["choices"][0]
     assert choice["finish_reason"] == "stop"
     assert choice["message"]["content"] == "Sunny."
+
+
+def test_images_edits_multipart_passes_image_as_reference(monkeypatch) -> None:
+    """``images.edit`` multipart upload reaches the generator as a data URL, in edit mode."""
+    from gemini_webapi_proxy.routes import images
+    from gemini_webapi_proxy.schemas import ImageGenerationData, ImageGenerationResponse
+
+    seen = {}
+
+    async def fake(settings, **kwargs):
+        seen.update(kwargs)
+        return ImageGenerationResponse(created=0, data=[ImageGenerationData(b64_json="AAAA")])
+
+    monkeypatch.setattr(images, "create_image_generation", fake)
+    with TestClient(app) as client:
+        resp = client.post(
+            "/openai/v1/images/edits",
+            data={"model": "gemini-2.5-flash-image", "prompt": "add a kitchen", "n": "1"},
+            files={"image": ("photo.png", b"\x89PNG-bytes", "image/png")},
+        )
+    assert resp.status_code == 200
+    assert resp.json()["data"][0]["b64_json"] == "AAAA"
+    assert seen["edit"] is True
+    assert seen["prompt"] == "add a kitchen"
+    assert seen["reference_images"][0].startswith("data:image/png;base64,")
+
+
+def test_images_edits_requires_image() -> None:
+    with TestClient(app) as client:
+        resp = client.post("/openai/v1/images/edits", data={"prompt": "x"})
+    assert resp.status_code == 400

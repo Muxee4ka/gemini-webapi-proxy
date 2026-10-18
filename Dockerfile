@@ -80,6 +80,7 @@ COPY pyproject.toml README.md README.zh.md LICENSE NOTICE CHANGELOG.md ./
 RUN python -m pip install --no-cache-dir hatchling && \
     python -m pip install --no-cache-dir \
         "fastapi>=0.115" \
+        "python-multipart>=0.0.9" \
         "uvicorn[standard]>=0.32" \
         "pydantic>=2.5" \
         "pydantic-settings>=2.1" \

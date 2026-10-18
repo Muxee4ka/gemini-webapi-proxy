@@ -57,8 +57,15 @@ def _messages_to_prompt_and_refs(messages: list[ChatMessage]) -> tuple[str, list
     return "\n\n".join(chunks), refs
 
 
-def _image_prompt(prompt: str, size: str | None, *, has_reference: bool) -> str:
-    if has_reference:
+def _image_prompt(prompt: str, size: str | None, *, has_reference: bool, edit: bool = False) -> str:
+    if has_reference and edit:
+        body = (
+            "Edit the attached image according to the instruction below. "
+            "Keep everything that the instruction does not ask to change (composition, "
+            "subjects, lighting, perspective). Return the edited image, not only text.\n\n"
+            f"Instruction: {prompt.strip()}"
+        )
+    elif has_reference:
         body = (
             "Use the attached reference image(s) as visual reference (character, style, composition, or subject). "
             "Generate a new image based on the reference and the prompt below. "
@@ -135,6 +142,7 @@ async def create_image_generation(
     size: str | None,
     response_format: str | None,
     reference_images: list[str] | None = None,
+    edit: bool = False,
 ) -> ImageGenerationResponse:
     client = await get_client(settings)
     target = registry.pick_image_model(model)
@@ -152,7 +160,7 @@ async def create_image_generation(
             sanitize_gemini_client_cookies(client)
             output = await asyncio.wait_for(
                 client.generate_content(
-                    _image_prompt(prompt, size, has_reference=bool(ref_paths)),
+                    _image_prompt(prompt, size, has_reference=bool(ref_paths), edit=edit),
                     files=ref_paths or None,
                     model=runtime,
                 ),

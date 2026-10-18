@@ -39,6 +39,7 @@ classifiers = [
 # can use). It is licensed GPL-3.0, which is why this project is GPL-3.0.
 dependencies = [
   "fastapi>=0.115",
+  "python-multipart>=0.0.9",
   "uvicorn[standard]>=0.32",
   "pydantic>=2.5",
   "pydantic-settings>=2.1",
