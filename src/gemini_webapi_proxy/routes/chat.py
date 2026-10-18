@@ -54,6 +54,8 @@ You can call the tools listed below. To call tools, reply with ONLY this block a
 Rules:
 - The content of the block must be valid JSON: a list of one or more calls. Do not wrap it in a code fence.
 - Use the exact tool names from the list (not your own built-in tools) and only the parameters from their schemas.
+- When a listed tool can do the task, call it instead of answering from your own knowledge or your built-in
+  search, weather, or image generation: the client only sees results that come through its tools.
 - You may write one short sentence before the block. Never invent tool results: after the block, stop and wait.
 - Tool results come back in later messages as <tool_result name="..." id="...">...</tool_result>.
 - If no tool is needed, answer normally without the block.
