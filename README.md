@@ -29,6 +29,13 @@ Drop-in `base_url` replacement for any OpenAI client — **no API key, reuses yo
   <br><em>Generated via <code>POST /openai/v1/images/generations</code> · <code>gemini-2.5-pro-image</code></em>
 </p>
 
+> **Fork of [Lutiancheng1/gemini-webapi-proxy](https://github.com/Lutiancheng1/gemini-webapi-proxy)** with:
+> - `gemini-webapi` ≥ 2.1.1 — dynamic model list (`gemini-flash`, `gemini-pro`, `gemini-argon`, `gemini-flash-lite` instead of `gemini-3-*`);
+> - `stream: true` support (the answer is generated in full, then sent as SSE);
+> - tool-calling emulation for agent clients (OpenClaw etc.): tool specs go into the prompt,
+>   a `<tool_calls>[...]</tool_calls>` block in the answer becomes OpenAI `tool_calls`;
+> - upstream refusal mapped to 502 instead of 403 (clients treat 403 as broken auth).
+
 ---
 
 ## 🤔 Why this project?
