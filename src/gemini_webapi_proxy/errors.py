@@ -17,6 +17,12 @@ class ImageExportError(RuntimeError):
             self.http_status = http_status
 
 
+class QuotaExceededError(RuntimeError):
+    """Gemini Web reported that the account's usage limit is used up."""
+
+    http_status = 429
+
+
 class UpstreamRefusalError(RuntimeError):
     """Gemini Web returned a policy / capability refusal instead of a real answer.
 

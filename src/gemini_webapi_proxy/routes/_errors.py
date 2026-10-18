@@ -9,7 +9,12 @@ from gemini_webapi.exceptions import AuthError
 
 from gemini_webapi_proxy.client.pool import invalidate_client
 from gemini_webapi_proxy.config import Settings
-from gemini_webapi_proxy.errors import CookieExpiredError, ImageExportError, UpstreamRefusalError
+from gemini_webapi_proxy.errors import (
+    CookieExpiredError,
+    ImageExportError,
+    QuotaExceededError,
+    UpstreamRefusalError,
+)
 from gemini_webapi_proxy.schemas import ErrorResponse
 from gemini_webapi_proxy.utils.upstream_refusal import (
     COOKIE_REAUTH_HINT,
@@ -44,6 +49,8 @@ async def map_api_error(exc: Exception, settings: Settings) -> JSONResponse:
         return error_json(str(exc), exc.http_status)
     if isinstance(exc, ImageExportError):
         return error_json(str(exc), exc.http_status)
+    if isinstance(exc, QuotaExceededError):
+        return error_json(f"Gemini usage limit reached: {exc}", exc.http_status)
     if isinstance(exc, UpstreamRefusalError):
         return error_json(
             _with_reauth_hint(f"Upstream refused request: {exc}"),

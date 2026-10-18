@@ -115,3 +115,19 @@ def test_refusal_response_includes_reauth_hint() -> None:
     body = _json.loads(resp.body)
     assert "Safari" in body["error"]["message"]
     assert "sync" in body["error"]["message"].lower()
+
+
+def test_quota_error_maps_to_429() -> None:
+    import asyncio
+
+    from gemini_webapi_proxy.config import Settings
+    from gemini_webapi_proxy.errors import QuotaExceededError
+    from gemini_webapi_proxy.routes._errors import map_api_error
+
+    resp = asyncio.run(
+        map_api_error(
+            QuotaExceededError("I can create more images as soon as your limit resets."),
+            Settings(),
+        )
+    )
+    assert resp.status_code == 429

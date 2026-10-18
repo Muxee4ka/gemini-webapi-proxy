@@ -12,6 +12,7 @@ from gemini_webapi_proxy.client.pool import get_client, registry
 from gemini_webapi_proxy.config import Settings
 from gemini_webapi_proxy.downloaders.chain import generated_image_to_b64
 from gemini_webapi_proxy.downloaders.image_export import sanitize_gemini_client_cookies
+from gemini_webapi_proxy.errors import QuotaExceededError
 from gemini_webapi_proxy.schemas import (
     ChatCompletionChoice,
     ChatCompletionResponse,
@@ -117,7 +118,7 @@ async def create_chat_completion(
         if images:
             payload["images"] = [{"url": img.url} for img in images]
         if _quota_message(text) and not images:
-            raise RuntimeError(text)
+            raise QuotaExceededError(text)
         return ChatCompletionResponse(
             id=f"chatcmpl-{uuid.uuid4().hex[:12]}",
             created=int(time.time()),
@@ -170,7 +171,7 @@ async def create_image_generation(
             images = output.images or []
             if not images:
                 if _quota_message(text):
-                    raise RuntimeError(text)
+                    raise QuotaExceededError(text)
                 if text:
                     raise RuntimeError(text)
                 raise RuntimeError(
