@@ -19,6 +19,9 @@ services:
       GOP_COOKIE_SOURCE: "env"
       GOP_PROBE_ON_START: "false"
       GOP_LOG_FORMAT: "json"
+      # Rotated cookies survive restarts (otherwise a restart can fall back to a
+      # logged-out guest session that only sees gemini-flash-lite).
+      GEMINI_COOKIE_PATH: "/app/data/cookie-cache"
       GOP_HTTP_PROXY: ${GOP_HTTP_PROXY:-http://127.0.0.1:7897}
     volumes:
       - ./data:/app/data

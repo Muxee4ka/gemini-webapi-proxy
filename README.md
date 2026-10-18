@@ -42,6 +42,9 @@ Drop-in `base_url` replacement for any OpenAI client — **no API key, reuses yo
 >   automatically (a re-sent prompt burns the daily video limit). An image instead of a video
 >   means the video limit is used up (`error.code = video_limit_reached`);
 > - exhausted Gemini quota → HTTP 429; the model list is re-read when a model is missing.
+> - `GEMINI_COOKIE_PATH` in `docker-compose.yml` keeps rotated cookies in `data/` across restarts;
+> - [`integrations/openclaw/gemini-video`](integrations/openclaw/gemini-video) — an OpenClaw skill that
+>   makes videos through `/openai/v1/videos` (env `GEMINI_PROXY_URL`, `GEMINI_PROXY_KEY` via `skills.entries`).
 
 ---
 
