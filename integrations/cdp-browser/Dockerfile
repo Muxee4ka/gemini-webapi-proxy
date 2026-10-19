@@ -1,4 +1,4 @@
-# A long-running Chromium that owns the Google session for GOP_COOKIE_SOURCE=cdp.
+# Chromium for signing in to Google on the server (GOP_COOKIE_SOURCE=cdp).
 # Runs headful on a virtual display (Xvfb): Google sign-in treats headless Chrome
 # as a bot. DevTools listens on 127.0.0.1 only; sign in through an SSH tunnel.
 FROM debian:bookworm-slim

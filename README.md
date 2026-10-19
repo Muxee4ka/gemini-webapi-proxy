@@ -43,7 +43,7 @@ Drop-in `base_url` replacement for any OpenAI client — **no API key, reuses yo
 >   means the video limit is used up (`error.code = video_limit_reached`);
 > - exhausted Gemini quota → HTTP 429; the model list is re-read when a model is missing.
 > - `GEMINI_COOKIE_PATH` in `docker-compose.yml` keeps rotated cookies in `data/` across restarts;
-> - `GOP_COOKIE_SOURCE=cdp`: on a server, cookies come from a Chromium container signed in once
+> - `GOP_COOKIE_SOURCE=cdp`: on a server, the session comes from a Chromium container you sign in to once
 >   ([`integrations/cdp-browser`](integrations/cdp-browser)); copied desktop cookies die within hours,
 >   see [cookie sources](docs/cookie-sources.md#cdp-recommended-for-servers);
 > - [`integrations/openclaw/gemini-video`](integrations/openclaw/gemini-video) — an OpenClaw skill that
@@ -272,8 +272,7 @@ are kept as legacy aliases for compatibility.
 | `GOP_HOST` | `0.0.0.0` | listen address |
 | `GOP_API_KEY` | _(empty)_ | when set, require `Authorization: Bearer <key>` |
 | `GOP_COOKIE_SOURCE` | `browser` | `browser` / `env` / `file` / `cdp` |
-| `GOP_CDP_URL` | `http://127.0.0.1:9223` | `cdp`: DevTools endpoint of the browser that owns the session |
-| `GOP_CDP_REFRESH_SECONDS` | `600` | `cdp`: how often to re-read the browser's cookies |
+| `GOP_CDP_URL` | `http://127.0.0.1:9223` | `cdp`: DevTools endpoint of the browser you sign in with |
 | `GOP_BROWSER` | `auto` | preferred browser: `auto` / `safari` / `chrome` / `edge` / `brave` / `chromium` |
 | `GOP_COOKIE_FILE` | _(empty)_ | path to a Netscape-format cookies.txt |
 | `GOP_GEMINI_1PSID` | _(empty)_ | `__Secure-1PSID` value (env / file modes) |

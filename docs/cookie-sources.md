@@ -8,7 +8,7 @@ The proxy can read Gemini Web cookies from four sources. Pick one with
 | Desktop browser | `browser` | Local development on macOS / desktop Linux | Automatic on every request |
 | Environment variables | `env` | Docker, headless servers, CI | Manual (re-export + restart) |
 | Netscape cookie file | `file` | Headless servers without browser access | Manual (re-export + reload) |
-| Chrome over DevTools | `cdp` | Servers: a browser on the server owns the session | Automatic, every `GOP_CDP_REFRESH_SECONDS` |
+| Chrome over DevTools | `cdp` | Servers: sign in once in a browser on the server | Automatic (the proxy rotates); re-read after a re-login |
 
 **Why copied cookies die on a server.** `env` and `file` give the proxy a copy of a
 session that lives in your desktop browser. The proxy rotates `__Secure-1PSIDTS` on its
@@ -16,8 +16,12 @@ own, but sessions created in desktop Chrome are increasingly device-bound
 (`__Secure-1PSIDRTS` cookies): only that browser can keep extending them. In practice a
 copied jar works for a few hours and then turns into a logged-out guest session
 (`Account status: UNAUTHENTICATED`, `/models` shows only `gemini-flash-lite`). The
-upstream project avoids this by running next to a real browser (`browser`); `cdp` does
-the same on a server.
+upstream project avoids this by running next to a real browser (`browser`). On a
+server, `cdp` creates the session on the server itself.
+
+**Never use one session from two clients at once.** Each client gets its own rotated
+`__Secure-1PSIDTS`, the session forks, and Google revokes it, the browser's copy
+included. This is why `cdp` takes the session away from the browser instead of sharing it.
 
 ## `browser` (default on desktop)
 
@@ -95,22 +99,24 @@ The `HttpOnly_` prefix is tolerated (some exporters add it).
 
 ## `cdp` (recommended for servers)
 
-A Chromium runs next to the proxy with its own profile, signed in to Google once by
-hand. The browser keeps the session alive; the proxy reads its cookies over the
-DevTools protocol and never rotates them itself (two rotation chains would fork the
-session).
+A Chromium runs next to the proxy with its own profile, and you sign in to Google in
+it once by hand. The session is created on the server, so it is not bound to your
+desktop.
 
 How it works:
 
-* every `GOP_CDP_REFRESH_SECONDS` (600) the next request reloads the Gemini tab in the
-  browser, reads its cookies and swaps in a new Gemini client; the old one is closed
-  a few minutes later, after in-flight requests finish;
-* if the browser is unreachable, the proxy keeps the current client;
-* an auth error drops the client, and the next request re-reads the browser.
+* on client init (startup, or a logged-out session being retried) the proxy reads the
+  browser's cookie jar over the DevTools protocol, without loading any page;
+* right after that every Google tab in the browser is switched to `about:blank`, so the
+  browser stops using the session; from then on the proxy owns it and gemini-webapi
+  rotates `__Secure-1PSIDTS`, cached in `GEMINI_COOKIE_PATH` (keep it on a volume);
+* if the session gets logged out, the proxy retries at most once a minute (on
+  requests), picking up a fresh sign-in by itself.
 
 Setup with the bundled container ([`integrations/cdp-browser`](../integrations/cdp-browser)):
 Chromium on a virtual display (Google sign-in treats headless Chrome as a bot),
-profile in `./profile`, DevTools on `127.0.0.1:9223`, about 600 MB RAM.
+profile in `./profile`, DevTools on `127.0.0.1:9223`, starts on `about:blank`,
+about 300-600 MB RAM.
 
 ```bash
 cd integrations/cdp-browser
@@ -118,20 +124,25 @@ mkdir -p profile && sudo chown 1000:1000 profile   # the browser runs as uid 100
 docker compose up -d --build
 ```
 
-Sign in once through an SSH tunnel from your desktop:
+Sign in through an SSH tunnel from your desktop:
 
 1. `ssh -N -L 9333:127.0.0.1:9223 user@server`
 2. In desktop Chrome open `chrome://inspect/#devices` → **Configure…** → add
    `localhost:9333`.
-3. Under **Remote Target** click **inspect** on the *Google Gemini* tab and sign in
-   inside the screencast (password, 2FA).
+3. Under **Remote Target** click **inspect** on the tab, open
+   `https://gemini.google.com/app` in it and sign in inside the screencast
+   (password, 2FA).
+4. Send any request to the proxy (or wait for the next one): the tab jumps to
+   `about:blank`, which means the proxy took the session.
 
 Then point the proxy at it (both containers on the host network):
 
 ```bash
 GOP_COOKIE_SOURCE=cdp
 GOP_CDP_URL=http://127.0.0.1:9223
+GEMINI_COOKIE_PATH=/app/data/cookie-cache
 ```
 
-Use a session that exists only in this browser: don't copy the same cookies into
-another proxy, and expect a "new sign-in from Linux" mail from Google.
+Don't open Gemini in that browser afterwards and don't copy the cookies anywhere
+else: that would fork the session again. Expect a "new sign-in from Linux" mail
+from Google.

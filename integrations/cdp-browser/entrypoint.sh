@@ -1,8 +1,9 @@
 #!/bin/sh
 set -e
 mkdir -p "$PROFILE_DIR"
-# A crash leaves the profile locked to the old container's hostname.
-rm -f "$PROFILE_DIR"/Singleton*
+# A crash or a host reboot leaves stale locks: the profile's (old hostname) and
+# Xvfb's (a pid that may now belong to another process). Either one stops the start.
+rm -f "$PROFILE_DIR"/Singleton* /tmp/.X99-lock /tmp/.X11-unix/X99
 Xvfb "$DISPLAY" -screen 0 1280x900x24 -nolisten tcp &
 sleep 1
 exec chromium \
@@ -14,4 +15,4 @@ exec chromium \
     --disable-background-networking --disable-sync \
     --renderer-process-limit=2 \
     --window-size=1280,900 \
-    https://gemini.google.com/app
+    about:blank

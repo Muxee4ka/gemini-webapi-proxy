@@ -10,11 +10,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
-import tempfile
 import time
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from gemini_webapi import GeminiClient
 from gemini_webapi.constants import AccountStatus
@@ -30,7 +27,6 @@ logger = logging.getLogger(__name__)
 _client: GeminiClient | None = None
 _client_created_at = 0.0
 _lock = asyncio.Lock()
-_background: set[asyncio.Task] = set()
 _UNAUTH_RETRY_SECONDS = 60.0
 registry = ModelRegistry()
 
@@ -50,32 +46,6 @@ def _client_authenticated(client: GeminiClient) -> bool:
     return getattr(client, "account_status", None) != AccountStatus.UNAUTHENTICATED
 
 
-def _clear_library_cookie_cache() -> None:
-    """Drop gemini-webapi's cached cookies.
-
-    The library tries its cache before the cookies it is given.  With ``cdp`` the
-    browser's jar is always the freshest, so a cached jar can only be older.
-    """
-    cache_dir = os.getenv("GEMINI_COOKIE_PATH") or Path(tempfile.gettempdir()) / "gemini_webapi"
-    for path in Path(cache_dir).glob(".cached_cookies_*.json"):
-        path.unlink(missing_ok=True)
-
-
-def _close_later(client: GeminiClient, delay: float = 300.0) -> None:
-    """Close a replaced client once requests that still hold it are done."""
-
-    async def _close() -> None:
-        await asyncio.sleep(delay)
-        try:
-            await client.close()
-        except Exception:
-            pass
-
-    task = asyncio.create_task(_close())
-    _background.add(task)
-    task.add_done_callback(_background.discard)
-
-
 async def _new_client(settings: Settings) -> GeminiClient:
     bundle = await _load_cookie_bundle(settings)
     if not bundle.is_valid():
@@ -84,49 +54,58 @@ async def _new_client(settings: Settings) -> GeminiClient:
     client = GeminiClient(bundle.psid, bundle.psidts, proxy=settings.http_proxy)
     if bundle.extras:
         client.cookies = dict(bundle.extras)
-    if settings.cookie_source == "cdp":
-        # The browser owns the session and rotates its cookies; a second rotation
-        # chain from here would fork it.
-        _clear_library_cookie_cache()
-        await client.init(timeout=settings.init_timeout, auto_refresh=False)
-    else:
-        await client.init(timeout=settings.init_timeout, auto_refresh=True)
+    # With cdp too the proxy owns the session once it has the cookies: the browser
+    # stops touching Gemini (see cookies/cdp.py), so there is one rotation chain.
+    await client.init(timeout=settings.init_timeout, auto_refresh=True)
     sanitize_gemini_client_cookies(client)
     return client
+
+
+def _retry_due(client: GeminiClient) -> bool:
+    """A logged-out (guest) client is replaced, at most once a minute.
+
+    Without this a guest client would stay until a restart: it answers with
+    ``gemini-flash-lite`` only, which is not an auth error.
+    """
+    return (
+        not _client_authenticated(client)
+        and time.monotonic() - _client_created_at >= _UNAUTH_RETRY_SECONDS
+    )
 
 
 async def get_client(settings: Settings | None = None) -> GeminiClient:
     global _client, _client_created_at
     settings = settings or get_settings()
-    if _client is not None and not _cdp_refresh_due(settings):
+    if _client is not None and not _retry_due(_client):
         return _client
     async with _lock:
-        if _client is not None and not _cdp_refresh_due(settings):
+        if _client is not None and not _retry_due(_client):
             return _client
 
         old = _client
         try:
             client = await _new_client(settings)
-        except Exception:
-            if old is not None:  # keep serving with the previous jar
-                logger.warning("Re-reading cookies failed; keeping the current client")
+        except Exception as exc:
+            logger.warning("Gemini client init failed: %s", exc)
+            if old is not None:
                 _client_created_at = time.monotonic()
                 return old
             raise
 
         _client, _client_created_at = client, time.monotonic()
         if old is not None:
-            _close_later(old)
+            try:
+                await old.close()
+            except Exception:
+                pass
+        if not _client_authenticated(client):
+            logger.warning(
+                "Gemini session is logged out (guest); re-reading cookies in %ss",
+                int(_UNAUTH_RETRY_SECONDS),
+            )
         registry.load_file()
         registry.sync_from_client(client.list_models())
         return _client
-
-
-def _cdp_refresh_due(settings: Settings) -> bool:
-    return (
-        settings.cookie_source == "cdp"
-        and time.monotonic() - _client_created_at >= settings.cdp_refresh_seconds
-    )
 
 
 async def close_client() -> None:
@@ -171,7 +150,8 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
         await get_client()
     except Exception:
         # Cookie not yet configured, or Gemini is down.  The first
-        # real request will retry; we don't want startup to fail.
+        # real request will retry; we don't want startup to fail
+        # (get_client already logged why).
         pass
     yield
     await close_client()
