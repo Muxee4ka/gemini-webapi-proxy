@@ -11,6 +11,11 @@ learned the hard way by a browser bot that queued clips through the same account
 
 Re-sending a prompt that is still being generated burns the limit, so jobs run one at
 a time and are never retried automatically.
+
+Veo keeps the stream silent for minutes.  gemini-webapi treats 120 s of silence as a
+dead stream: it closes the connection (Google drops the unfinished turn, so it never
+shows up in the history) and ``@running(retry=5)`` sends the prompt again.  So a video
+call runs with the stall timeouts raised to ``video_timeout`` and with no retries.
 """
 
 from __future__ import annotations
@@ -20,6 +25,8 @@ import logging
 import re
 import time
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -117,6 +124,17 @@ def video_prompt(prompt: str, *, has_reference: bool, seconds: str | None, size:
     return body
 
 
+@contextmanager
+def _patient_stream(client: Any, seconds: float) -> Iterator[None]:
+    """Let a silent stream live ``seconds`` before the library gives up on it."""
+    saved = (client.timeout, client.watchdog_timeout)
+    client.timeout = client.watchdog_timeout = seconds
+    try:
+        yield
+    finally:
+        client.timeout, client.watchdog_timeout = saved
+
+
 def _cleanup(settings: Settings) -> None:
     cutoff = time.time() - settings.video_keep_hours * 3600
     for job_id, job in list(_jobs.items()):
@@ -162,19 +180,21 @@ async def run_job(settings: Settings, job: VideoJob) -> None:
                     job.references, proxy=settings.http_proxy
                 )
             sanitize_gemini_client_cookies(client)
-            output = await asyncio.wait_for(
-                client.generate_content(
-                    video_prompt(
-                        job.prompt,
-                        has_reference=bool(ref_paths),
-                        seconds=job.seconds,
-                        size=job.size,
+            with _patient_stream(client, settings.video_timeout):
+                output = await asyncio.wait_for(
+                    client.generate_content(
+                        video_prompt(
+                            job.prompt,
+                            has_reference=bool(ref_paths),
+                            seconds=job.seconds,
+                            size=job.size,
+                        ),
+                        files=ref_paths or None,
+                        model=runtime,
+                        current_retry=0,  # read by gemini-webapi's @running decorator
                     ),
-                    files=ref_paths or None,
-                    model=runtime,
-                ),
-                timeout=settings.video_timeout,
-            )
+                    timeout=settings.video_timeout + 30,
+                )
             job.text = (output.text or "").strip()
             videos = list(getattr(output, "videos", None) or [])
             kind = classify(job.text, videos=len(videos), images=len(output.images or []))

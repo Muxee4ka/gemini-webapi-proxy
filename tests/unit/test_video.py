@@ -44,20 +44,25 @@ class _FakeVideo:
         return {"video": str(out), "video_thumbnail": None}
 
 
-def _fake_client(output):
-    async def generate_content(prompt, files=None, model=None):
+def _fake_client(output, seen: dict | None = None):
+    client = SimpleNamespace(cookies={}, timeout=120, watchdog_timeout=120)
+
+    async def generate_content(prompt, files=None, model=None, **kwargs):
+        if seen is not None:
+            seen.update(kwargs, timeout=client.timeout, watchdog_timeout=client.watchdog_timeout)
         return output
 
-    return SimpleNamespace(generate_content=generate_content, cookies={})
+    client.generate_content = generate_content
+    return client
 
 
 def _settings(tmp_path):
     return SimpleNamespace(data_dir=tmp_path, video_timeout=5, video_keep_hours=24, http_proxy=None)
 
 
-def _run(monkeypatch, tmp_path, output) -> video.VideoJob:
+def _run(monkeypatch, tmp_path, output, client=None) -> video.VideoJob:
     async def get_client(settings):
-        return _fake_client(output)
+        return client or _fake_client(output)
 
     async def resolve(client, model_id):
         return model_id
@@ -74,6 +79,14 @@ def test_run_job_saves_video(monkeypatch, tmp_path) -> None:
     job = _run(monkeypatch, tmp_path, SimpleNamespace(text="", images=[], videos=[_FakeVideo()]))
     assert job.status == "completed"
     assert job.path and job.path.exists()
+
+
+def test_video_call_waits_out_silence_without_resending(monkeypatch, tmp_path) -> None:
+    seen: dict = {}
+    client = _fake_client(SimpleNamespace(text="", images=[], videos=[_FakeVideo()]), seen)
+    _run(monkeypatch, tmp_path, None, client)
+    assert seen == {"current_retry": 0, "timeout": 5, "watchdog_timeout": 5}
+    assert (client.timeout, client.watchdog_timeout) == (120, 120)
 
 
 def test_run_job_image_instead_of_video_is_limit(monkeypatch, tmp_path) -> None:
