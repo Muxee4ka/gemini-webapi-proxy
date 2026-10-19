@@ -20,6 +20,7 @@ Auth: when `GOP_API_KEY` is set, every request needs `Authorization: Bearer <key
 | GET | `/openai/v1/videos/{id}` | Video job status |
 | GET | `/openai/v1/videos/{id}/content` | Finished video, `video/mp4` |
 | POST | `/admin/probe-models` | Re-probe every model and refresh the registry |
+| GET | `/admin/quota` | Account usage limits (credits per model, 5-hour/weekly usage, reset times) |
 
 ## Models
 
@@ -171,6 +172,26 @@ kind of account:
 - A failed job is never retried automatically: re-sending a prompt burns the video limit.
 - Jobs and files are kept for `GOP_VIDEO_KEEP_HOURS` (24 h). The job list lives in
   memory: a restart forgets running and finished jobs.
+
+## Quota
+
+`GET /admin/quota` returns what gemini-webapi last read about the account's limits. It
+sends nothing to Google: per-model credits are read on every client init, the 5-hour and
+weekly usage after every generation.
+
+```json
+{
+  "account_status": "AVAILABLE",
+  "tier": "ULTRA",
+  "usage": {"current_5h": {"remaining_credits": 900, "usage_percentage": 10, "reset_at": "…"}, "weekly": null},
+  "models": [{"label": "Gemini Flash [None-11]", "remaining": 36685, "total": 48384, "usage_percentage": 24, "reset_at": "2026-10-19T19:39:22+00:00"}],
+  "extra": {"is_blocked": false, "usage_percentage": 5.0, "reset_time": null},
+  "abuse_status": {"status": "Clean"},
+  "checked_at": 1792438000
+}
+```
+
+Gemini does not report the video limit; it shows up only as a `video_limit_reached` job.
 
 ## Errors
 

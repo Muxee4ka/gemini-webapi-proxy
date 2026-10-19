@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Cookie source `cdp`: the session is signed in once in a Chrome on the server and
   taken over DevTools (`GOP_CDP_URL`); the browser then leaves Gemini so only the proxy
   uses the session. Container in `integrations/cdp-browser`
+- `GET /admin/quota` — the account's limits as gemini-webapi last read them: credits
+  per model, 5-hour and weekly usage, tier, reset times (the video limit is not reported)
+
+### Fixed
+- Video jobs: the stream is allowed to stay silent for `GOP_VIDEO_TIMEOUT` and the prompt
+  is never re-sent (Veo answers after minutes; the 120 s watchdog used to drop the turn
+  and send the prompt again)
 
 ### Changed
 - `gemini-webapi` ≥ 2.1.1: the model list is the account's live list
