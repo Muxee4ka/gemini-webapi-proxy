@@ -61,8 +61,11 @@ services:
       VNC_PORT: ${GOP_VNC_PORT:-6080}
       RFB_PORT: ${GOP_RFB_PORT:-5900}   # x11vnc, behind noVNC
     volumes:
-      - ./data/browser-profile:/data/profile   # owned by uid 1000 (install.sh sets it)
+      - browser-profile:/data/profile   # the default context only; sign-ins use throwaway contexts
     shm_size: 256m
     # One open Gemini tab takes about 250-300 MB.
     mem_limit: 1600m
     restart: unless-stopped
+
+volumes:
+  browser-profile:

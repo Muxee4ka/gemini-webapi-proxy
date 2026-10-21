@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased] — fork Muxee4ka/gemini-webapi-proxy
 
 ### Added
+- `scripts/install.ps1` (Windows, Docker Desktop) and `docker-compose.desktop.yml`: no host
+  networking, the browser shares the proxy's network, only the proxy port is published;
+  `install.sh --desktop` (automatic on macOS). Browser profile in a named volume.
+  `.gitattributes` keeps `*.sh` LF on Windows checkouts
 - `scripts/install.sh`: one-command server install. Root `docker-compose.yml` now runs
   the proxy and the sign-in browser together (cookie source `cdp`, no default HTTP proxy,
   browser ports via `GOP_CDP_PORT` / `GOP_VNC_PORT` / `GOP_RFB_PORT`); the macOS Safari

@@ -4,11 +4,13 @@
 # admin UI (/admin/ui proxies noVNC) or through an SSH tunnel.
 FROM debian:bookworm-slim
 
+# /data/profile belongs to the browser user, so a named volume mounted there starts writable.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         chromium xvfb x11vnc novnc websockify \
         fonts-liberation fonts-noto-color-emoji ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && useradd -m -u 1000 chrome
+    && useradd -m -u 1000 chrome \
+    && mkdir -p /data/profile && chown chrome:chrome /data/profile
 
 COPY entrypoint.sh /entrypoint.sh
 USER chrome

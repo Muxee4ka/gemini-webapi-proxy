@@ -105,7 +105,7 @@ client — without copy-pasting prompts into the web UI.
 - 🎬 **Video generation (Veo)** — OpenAI Videos API shape: `POST /openai/v1/videos` → job → mp4
 - 🍪 **Pluggable cookie sources** — desktop browser (Safari/Chrome/…), env vars, Netscape cookie file
 - 👥 **Several accounts + admin UI** — `/admin/ui`: state and limits per account, sign-in through the server's browser, automatic switch when an account runs out, a proxy per account, request journal, client keys, playground ([docs/accounts.md](docs/accounts.md))
-- 🐳 **One-command server install** — `./scripts/install.sh`: proxy + sign-in browser in Docker, keys generated, auto-restart
+- 🐳 **One-command install** — `scripts/install.sh` (Linux, macOS) / `scripts/install.ps1` (Windows): proxy + sign-in browser in Docker, keys generated, auto-restart
 - 🔌 **Multi-fallback image download** — httpx (RPC / preview URL) → gemini-webapi library save; no browser in the image
 - 🛡 **Upstream refusal detection** — Gemini "I cannot fulfill…" answers become errors (403 images / 502 chat), exhausted quota → 429
 - 🛠 **Optional API key** — `GOP_API_KEY=...` enables Bearer auth; empty = off (local-only default)
@@ -113,30 +113,63 @@ client — without copy-pasting prompts into the web UI.
 
 ## 🚀 Quick Start
 
-### Server: one command (Docker, several accounts, admin UI)
+### One command (Docker: several accounts, admin UI)
 
-On a Linux server with Docker and Compose v2:
+Installs the proxy and the browser used to sign in to Google accounts. The script
+writes `.env` (a generated API key and admin password), builds and starts both
+containers, waits for `/health` and prints the admin UI address and password.
+Running it again keeps `.env` and the data and rebuilds/restarts.
+
+**Linux** (Docker Engine + Compose v2):
 
 ```bash
-git clone https://github.com/Muxee4ka/gemini-webapi-proxy
+git clone -b accounts-wip https://github.com/Muxee4ka/gemini-webapi-proxy
 cd gemini-webapi-proxy
-./scripts/install.sh            # add --listen 0.0.0.0 to listen on all interfaces, --port N to move it
+./scripts/install.sh                       # listens on 127.0.0.1:4982
+./scripts/install.sh --listen 0.0.0.0      # or on all interfaces
+./scripts/install.sh --port 4990           # another port
 ```
 
-The script writes `.env` (API key and admin password, mode 0600), builds and starts
-the proxy and the sign-in browser (`docker-compose.yml`), waits for `/health` and
-prints the admin UI address and password. Then:
+On a remote server, reach the UI through `ssh -N -L 4982:127.0.0.1:4982 <server>` or put
+it behind nginx with TLS ([docs/accounts.md](docs/accounts.md#setup) has the WebSocket block
+the sign-in screen needs).
 
-1. Open `http://<server>:4982/admin/ui` (by default it listens on 127.0.0.1 only:
-   use `ssh -N -L 4982:127.0.0.1:4982 <server>` or a reverse proxy with TLS, see
-   [docs/accounts.md](docs/accounts.md#setup) for the nginx WebSocket block).
-2. Press **Войти** on the `default` account and sign in to Google in the browser shown
-   on the page; add more accounts with **+ Аккаунт** (the UI is in Russian).
-3. Point OpenAI clients at `http://<server>:4982/openai/v1` with `Bearer <GOP_API_KEY>`
+**Windows** (Docker Desktop running, PowerShell 5.1 or 7):
+
+```powershell
+git clone -b accounts-wip https://github.com/Muxee4ka/gemini-webapi-proxy
+cd gemini-webapi-proxy
+powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
+# options: -Listen 0.0.0.0  -Port 4990
+```
+
+**macOS** (Docker Desktop running):
+
+```bash
+git clone -b accounts-wip https://github.com/Muxee4ka/gemini-webapi-proxy
+cd gemini-webapi-proxy
+./scripts/install.sh                       # Docker Desktop mode is picked automatically
+```
+
+On Docker Desktop the containers do not use host networking
+([`docker-compose.desktop.yml`](docker-compose.desktop.yml)): the browser shares the proxy's
+network and only the proxy port is published on `127.0.0.1`. A proxy running on the
+computer itself is `http://host.docker.internal:<port>` for an account.
+
+Then, on any system:
+
+1. Open `http://127.0.0.1:4982/admin/ui` and sign in with the printed password
+   (`GOP_ADMIN_PASSWORD` in `.env`). The UI is in Russian.
+2. Press **Войти** on the `default` account and sign in to Google in the browser shown on
+   the page; add more accounts with **+ Аккаунт**, set a proxy per account in its card.
+3. Point OpenAI clients at `http://127.0.0.1:4982/openai/v1` with `Bearer <GOP_API_KEY>`
    from `.env`, or create a named key per client in the **Ключи** tab.
 
-Running `./scripts/install.sh` again keeps `.env` and `data/` and rebuilds/restarts.
-A proxy per account (another exit address towards Google) is set in the account card.
+Manual setup with plain `docker compose`: create `.env` with `GOP_API_KEY=...` and
+`GOP_ADMIN_PASSWORD=...` (`.env.example` is for running from source, not for Docker), then
+`docker compose up -d --build` (Linux) or
+`docker compose -f docker-compose.yml -f docker-compose.desktop.yml up -d --build`
+(Docker Desktop).
 
 ### Single account on a desktop
 
