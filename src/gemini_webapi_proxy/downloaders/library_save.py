@@ -36,9 +36,7 @@ class LibrarySaveDownloader(BaseDownloader):
         settings: Any,
         client: Any,
     ) -> bytes | None:
-        image.proxy = (
-            None if image.url and _cdn_proxy(settings, image.url) is None else settings.http_proxy
-        )
+        image.proxy = _cdn_proxy(settings, image.url) if image.url else settings.http_proxy
         for full_size in (True, False):
             try:
                 with tempfile.TemporaryDirectory() as tmp:

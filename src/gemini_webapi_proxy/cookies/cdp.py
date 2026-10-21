@@ -17,6 +17,7 @@ import itertools
 import json
 import logging
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 import websockets
@@ -70,8 +71,11 @@ def _sent_to_gemini(cookie: dict) -> bool:
     return host_ok and cookie.get("path", "/") == "/"
 
 
-async def _gemini_jar(cdp: _Cdp) -> dict[str, str]:
-    cookies = [c for c in (await cdp.send("Storage.getCookies"))["cookies"] if _sent_to_gemini(c)]
+async def _gemini_jar(cdp: _Cdp, context: str | None = None) -> dict[str, str]:
+    params = {"browserContextId": context} if context else {}
+    cookies = [
+        c for c in (await cdp.send("Storage.getCookies", params))["cookies"] if _sent_to_gemini(c)
+    ]
     # A host-only cookie wins over a same-named one set for .google.com.
     cookies.sort(key=lambda c: not c["domain"].startswith("."))
     return {c["name"]: c["value"] for c in cookies}
@@ -111,10 +115,12 @@ _EMAIL_JS = r"""(() => {
 })()"""
 
 
-async def _signed_in_email(cdp: _Cdp) -> str | None:
+async def _signed_in_email(cdp: _Cdp, context: str | None = None) -> str | None:
     """The account shown on an open Gemini page (its avatar button names it)."""
     for target in await _pages(cdp):
         if _GEMINI_HOST not in target["url"]:
+            continue
+        if context and target.get("browserContextId") != context:
             continue
         try:
             result = await _on_page(
@@ -144,39 +150,100 @@ SIGN_IN_URL = (
 )
 
 
-async def open_sign_in(cdp_url: str) -> None:
-    """Start a sign-in from a clean browser: no cookies, one tab on Google's sign-in."""
+def chrome_proxy(proxy: str | None) -> str | None:
+    """``proxy`` as Chrome's ``proxyServer`` takes it (it cannot carry a login)."""
+    if not proxy:
+        return None
+    parts = urlsplit(proxy)
+    if parts.username or parts.password:
+        raise ValueError(
+            "The sign-in browser cannot use a proxy with a login: Chrome takes no "
+            "credentials in the proxy address. Use a local proxy without one."
+        )
+    scheme = "socks5" if parts.scheme.startswith("socks") else parts.scheme or "http"
+    return f"{scheme}://{parts.hostname}:{parts.port}"
+
+
+async def _sign_in_contexts(cdp: _Cdp) -> list[str]:
+    return list((await cdp.send("Target.getBrowserContexts")).get("browserContextIds", []))
+
+
+async def _dispose_contexts(cdp: _Cdp) -> None:
+    for context in await _sign_in_contexts(cdp):
+        try:
+            await cdp.send("Target.disposeBrowserContext", {"browserContextId": context})
+        except Exception as exc:
+            logger.warning("CDP: could not dispose context %s: %s", context, exc)
+
+
+async def open_sign_in(cdp_url: str, proxy: str | None = None) -> str:
+    """Start a sign-in in a fresh, separate browser context (own cookies, own proxy).
+
+    The context lives in memory only and is disposed once the session is taken, so
+    the browser keeps nothing.  With ``proxy`` Google sees the sign-in come from the
+    address the account will be used from.  Returns the context id.
+    """
+    proxy_server = chrome_proxy(proxy)
     async with websockets.connect(await _browser_ws_url(cdp_url), max_size=None) as ws:
         cdp = _Cdp(ws)
-        await cdp.send("Storage.clearCookies")
-        pages = await _pages(cdp)
-        if not pages:
-            await cdp.send("Target.createTarget", {"url": SIGN_IN_URL})
-            return
-        for extra in pages[1:]:
-            await cdp.send("Target.closeTarget", {"targetId": extra["targetId"]})
-        await _on_page(cdp, pages[0], "Page.navigate", {"url": SIGN_IN_URL})
-        await cdp.send("Target.activateTarget", {"targetId": pages[0]["targetId"]})
+        await _dispose_contexts(cdp)  # an earlier sign-in left unfinished
+        await cdp.send("Storage.clearCookies")  # the default context holds nothing either
+        params: dict[str, Any] = {"disposeOnDetach": False}
+        if proxy_server:
+            params["proxyServer"] = proxy_server
+        context = (await cdp.send("Target.createBrowserContext", params))["browserContextId"]
+        target = await cdp.send(
+            "Target.createTarget",
+            {"url": SIGN_IN_URL, "browserContextId": context, "newWindow": True},
+        )
+        try:  # fill the virtual screen, which is what noVNC shows
+            window = await cdp.send("Browser.getWindowForTarget", {"targetId": target["targetId"]})
+            await cdp.send(
+                "Browser.setWindowBounds",
+                {
+                    "windowId": window["windowId"],
+                    "bounds": {"left": 0, "top": 0, "width": 1280, "height": 900},
+                },
+            )
+        except Exception as exc:
+            logger.debug("CDP: could not place the sign-in window: %s", exc)
+        return context
 
 
-async def take_session(cdp_url: str) -> tuple[dict[str, str], str | None]:
+async def take_session(
+    cdp_url: str, context: str | None = None
+) -> tuple[dict[str, str], str | None]:
     """Hand the signed-in session over to the proxy: the browser keeps no copy.
 
     A Chrome that still holds the cookies keeps talking to Google in the background
     (account checks, cookie rotation) even with no Google tab open, and a session
-    rotated by two clients gets revoked.  So the jar is read, then every cookie in the
-    browser is cleared and its tabs leave Google.  Clearing local cookies is not a
-    sign-out: the session stays valid for the proxy.
+    rotated by two clients gets revoked.  So the jar is read and the sign-in context
+    is disposed (or, for a sign-in in the default context, every cookie cleared and
+    the tabs sent off Google).  Dropping local cookies is not a sign-out: the session
+    stays valid, now held only by the proxy.
     """
     async with websockets.connect(await _browser_ws_url(cdp_url), max_size=None) as ws:
         cdp = _Cdp(ws)
-        jar = await _gemini_jar(cdp)
+        if context is None:  # the proxy restarted mid sign-in: take the one left open
+            contexts = await _sign_in_contexts(cdp)
+            context = contexts[0] if len(contexts) == 1 else None
+        jar = await _gemini_jar(cdp, context)
         if "__Secure-1PSID" not in jar:
             return jar, None
-        email = await _signed_in_email(cdp)
-        await _park_google_tabs(cdp)
-        await cdp.send("Storage.clearCookies")
+        email = await _signed_in_email(cdp, context)
+        if context:
+            await cdp.send("Target.disposeBrowserContext", {"browserContextId": context})
+        else:
+            await _park_google_tabs(cdp)
+            await cdp.send("Storage.clearCookies")
         return jar, email
+
+
+async def cancel_sign_in(cdp_url: str) -> None:
+    async with websockets.connect(await _browser_ws_url(cdp_url), max_size=None) as ws:
+        cdp = _Cdp(ws)
+        await _dispose_contexts(cdp)
+        await cdp.send("Storage.clearCookies")
 
 
 @register_source

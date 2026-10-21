@@ -38,9 +38,10 @@ async def test_cdp_source_requires_signed_in_browser(monkeypatch: pytest.MonkeyP
 class FakeBrowser:
     """Answers DevTools commands like a Chrome with one Gemini tab open."""
 
-    def __init__(self) -> None:
+    def __init__(self, contexts: list[str] | None = None) -> None:
         self.sent: list[dict] = []
         self._replies: list[str] = []
+        self.contexts = contexts or []  # sign-in contexts already open
 
     async def __aenter__(self):
         return self
@@ -73,6 +74,10 @@ class FakeBrowser:
                 ]
             },
             "Target.attachToTarget": {"sessionId": "s1"},
+            "Target.getBrowserContexts": {"browserContextIds": self.contexts},
+            "Target.createBrowserContext": {"browserContextId": "ctx-new"},
+            "Target.createTarget": {"targetId": "t9"},
+            "Browser.getWindowForTarget": {"windowId": 7},
         }
         # An event first: the client must skip it while waiting for its reply.
         self._replies.append(json.dumps({"method": "Target.targetInfoChanged", "params": {}}))
@@ -117,15 +122,60 @@ async def test_take_session_reads_then_clears_the_browser(monkeypatch: pytest.Mo
     assert methods[-1] == "Storage.clearCookies"
 
 
-async def test_open_sign_in_starts_from_a_clean_browser(monkeypatch: pytest.MonkeyPatch):
+async def test_take_session_from_a_sign_in_context_disposes_it(monkeypatch: pytest.MonkeyPatch):
     from gemini_webapi_proxy.cookies import cdp
 
     browser = FakeBrowser()
     monkeypatch.setattr(cdp.websockets, "connect", lambda url, **kw: browser)
-    await cdp.open_sign_in("ws://127.0.0.1:9223/devtools/browser/x")
+    jar, _ = await cdp.take_session("ws://127.0.0.1:9223/devtools/browser/x", "ctx1")
 
+    assert jar["__Secure-1PSID"] == "sid"
+    assert browser.sent[0] == {
+        "id": 1,
+        "method": "Storage.getCookies",
+        "params": {"browserContextId": "ctx1"},
+    }
+    assert browser.sent[-1]["method"] == "Target.disposeBrowserContext"
+    assert browser.sent[-1]["params"] == {"browserContextId": "ctx1"}
+    assert "Storage.clearCookies" not in [m["method"] for m in browser.sent]
+
+
+async def test_take_session_finds_the_context_left_by_a_restart(monkeypatch: pytest.MonkeyPatch):
+    from gemini_webapi_proxy.cookies import cdp
+
+    browser = FakeBrowser(contexts=["ctx-old"])
+    monkeypatch.setattr(cdp.websockets, "connect", lambda url, **kw: browser)
+    await cdp.take_session("ws://127.0.0.1:9223/devtools/browser/x")
+    assert browser.sent[-1]["params"] == {"browserContextId": "ctx-old"}
+
+
+async def test_open_sign_in_uses_a_fresh_context_with_the_account_proxy(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from gemini_webapi_proxy.cookies import cdp
+
+    browser = FakeBrowser(contexts=["ctx-old"])
+    monkeypatch.setattr(cdp.websockets, "connect", lambda url, **kw: browser)
+    context = await cdp.open_sign_in("ws://x", "http://127.0.0.1:10812")
+
+    assert context == "ctx-new"
     methods = [m["method"] for m in browser.sent]
-    assert methods[0] == "Storage.clearCookies"
-    assert "Target.closeTarget" in methods  # the second tab
-    nav = next(m for m in browser.sent if m["method"] == "Page.navigate")
-    assert nav["params"]["url"] == cdp.SIGN_IN_URL
+    assert methods[:4] == [
+        "Target.getBrowserContexts",
+        "Target.disposeBrowserContext",  # the unfinished one
+        "Storage.clearCookies",
+        "Target.createBrowserContext",
+    ]
+    created = browser.sent[3]["params"]
+    assert created == {"disposeOnDetach": False, "proxyServer": "http://127.0.0.1:10812"}
+    target = next(m for m in browser.sent if m["method"] == "Target.createTarget")["params"]
+    assert target == {"url": cdp.SIGN_IN_URL, "browserContextId": "ctx-new", "newWindow": True}
+
+
+def test_chrome_proxy_cannot_carry_a_login():
+    from gemini_webapi_proxy.cookies import cdp
+
+    assert cdp.chrome_proxy("socks5h://127.0.0.1:10811") == "socks5://127.0.0.1:10811"
+    assert cdp.chrome_proxy(None) is None
+    with pytest.raises(ValueError, match="login"):
+        cdp.chrome_proxy("http://user:pass@1.2.3.4:8080")

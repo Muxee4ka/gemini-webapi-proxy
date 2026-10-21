@@ -36,7 +36,7 @@ from gemini_webapi_proxy.auth import (
 from gemini_webapi_proxy.client import pool as pool_module
 from gemini_webapi_proxy.client.pool import pool
 from gemini_webapi_proxy.config import get_settings
-from gemini_webapi_proxy.cookies.cdp import open_sign_in, take_session
+from gemini_webapi_proxy.cookies.cdp import cancel_sign_in, chrome_proxy, open_sign_in, take_session
 from gemini_webapi_proxy.utils.cookies import parse_cookie_string
 
 log = logging.getLogger(__name__)
@@ -174,18 +174,94 @@ async def paste_cookies(account_id: str, body: CookiesIn) -> dict:
     return await _use_jar(account_id, parse_cookie_string(body.cookies), None)
 
 
+# ---- Outbound proxy of an account --------------------------------------------
+class ProxyIn(BaseModel):
+    proxy: str | None = None  # http://host:port, socks5://host:port; empty: direct
+
+
+_PROXY_SCHEMES = ("http", "https", "socks5", "socks5h")
+
+
+async def egress_check(proxy: str | None) -> dict:
+    """Where Google sees requests from: the public address behind ``proxy``."""
+    from curl_cffi.requests import AsyncSession
+
+    started = time.monotonic()
+    async with AsyncSession(proxy=proxy, timeout=20, impersonate="chrome") as http:
+        info = (await http.get("https://ipinfo.io/json")).json()
+        gemini = await http.get("https://gemini.google.com/app", allow_redirects=False)
+    return {
+        "ip": info.get("ip"),
+        "country": info.get("country"),
+        "city": info.get("city"),
+        "org": info.get("org"),
+        "gemini_status": gemini.status_code,
+        "ms": round((time.monotonic() - started) * 1000),
+        "checked_at": time.time(),
+        "proxy": proxy,
+    }
+
+
+@router.post("/accounts/{account_id}/proxy")
+async def set_proxy(account_id: str, body: ProxyIn) -> dict:
+    """Set or clear the account's proxy, check it, and restart the account's client.
+
+    The session stays signed in, but it was created from another address: sign in
+    again through the new proxy so both match.
+    """
+    slot = _slot(account_id)
+    proxy = (body.proxy or "").strip() or None
+    if proxy:
+        scheme = proxy.split("://", 1)[0].lower() if "://" in proxy else ""
+        if scheme not in _PROXY_SCHEMES:
+            raise HTTPException(
+                status_code=400, detail="Proxy must start with http://, https:// or socks5://"
+            )
+        try:
+            chrome_proxy(proxy)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        egress = await egress_check(proxy or get_settings().http_proxy)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"The proxy does not work: {exc}") from exc
+    changes: dict = {"proxy": proxy, "egress": egress}
+    if proxy != slot.account.proxy:
+        changes["proxy_set_at"] = time.time()
+    _store().update(account_id, **changes)
+    pool.sync()
+    await pool.drop(account_id)
+    return slot.report()
+
+
+@router.post("/accounts/{account_id}/proxy/check")
+async def check_proxy(account_id: str) -> dict:
+    slot = _slot(account_id)
+    try:
+        egress = await egress_check(slot.account.proxy or get_settings().http_proxy)
+    except Exception as exc:
+        egress = {"error": str(exc)[:300], "checked_at": time.time(), "proxy": slot.account.proxy}
+    _store().update(account_id, egress=egress)
+    return slot.report()
+
+
 # ---- Sign-in through the server's browser ----------------------------------
 @router.post("/accounts/{account_id}/login/start")
 async def login_start(account_id: str) -> dict:
-    _slot(account_id)
+    slot = _slot(account_id)
     busy = pool_module.current_sign_in()
     if busy not in (None, account_id):
         raise HTTPException(status_code=409, detail=f"Sign-in to {busy!r} is in progress")
+    settings = get_settings()
     try:
-        await open_sign_in(get_settings().cdp_url)
+        # The sign-in leaves through the account's proxy, like its requests will.
+        context = await open_sign_in(settings.cdp_url, slot.account.proxy or settings.http_proxy)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Sign-in browser: {exc}") from exc
     pool_module.signing_in, pool_module.signing_in_since = account_id, time.monotonic()
+    pool_module.signing_in_context = context
     return {
         "ok": True,
         "vnc": "/admin/vnc/vnc.html?path=admin/vnc/websockify&autoconnect=true&resize=scale&reconnect=true",
@@ -196,21 +272,21 @@ async def login_start(account_id: str) -> dict:
 async def login_finish(account_id: str) -> dict:
     _slot(account_id)
     try:
-        jar, email = await take_session(get_settings().cdp_url)
+        jar, email = await take_session(get_settings().cdp_url, pool_module.signing_in_context)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Sign-in browser: {exc}") from exc
     if "__Secure-1PSID" not in jar:
         raise HTTPException(status_code=400, detail="Not signed in yet: finish the sign-in first")
-    pool_module.signing_in = None
+    pool_module.signing_in = pool_module.signing_in_context = None
     log.info("account %s: signed in through the browser (%s)", account_id, email or "?")
     return await _use_jar(account_id, jar, email)
 
 
 @router.post("/accounts/{account_id}/login/cancel")
 async def login_cancel(account_id: str) -> dict:
-    pool_module.signing_in = None
+    pool_module.signing_in = pool_module.signing_in_context = None
     try:
-        await take_session(get_settings().cdp_url)  # just wipes the browser
+        await cancel_sign_in(get_settings().cdp_url)
     except Exception as exc:
         log.warning("sign-in browser: %s", exc)
     return {"ok": True}

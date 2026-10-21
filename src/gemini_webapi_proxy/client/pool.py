@@ -32,6 +32,7 @@ from gemini_webapi_proxy.config import Settings, get_settings
 from gemini_webapi_proxy.cookies import CookieBundle, build_source
 from gemini_webapi_proxy.cookies.session_bootstrap import bootstrap_browser_cookie_session
 from gemini_webapi_proxy.downloaders.image_export import sanitize_gemini_client_cookies
+from gemini_webapi_proxy.egress import egress
 from gemini_webapi_proxy.errors import NoAccountError, QuotaExceededError
 from gemini_webapi_proxy.stats import journal, note_account
 
@@ -47,6 +48,7 @@ registry = ModelRegistry()
 # An abandoned sign-in (the UI tab was closed) lapses after SIGN_IN_SECONDS.
 signing_in: str | None = None
 signing_in_since = 0.0
+signing_in_context: str | None = None  # the browser context of that sign-in
 SIGN_IN_SECONDS = 15 * 60
 # Set by the admin playground: serve the request on this account only.
 pinned: ContextVar[str | None] = ContextVar("gop_pinned_account", default=None)
@@ -93,7 +95,7 @@ async def _new_client(settings: Settings, account: Account) -> GeminiClient:
     if not bundle.is_valid():
         raise RuntimeError("No session cookies (no __Secure-1PSID): sign in to this account")
 
-    client = GeminiClient(bundle.psid, bundle.psidts, proxy=settings.http_proxy)
+    client = GeminiClient(bundle.psid, bundle.psidts, proxy=account.proxy or settings.http_proxy)
     if bundle.extras:
         client.cookies = dict(bundle.extras)
     # The proxy owns the session once it has the cookies: the sign-in browser forgets
@@ -130,6 +132,37 @@ class Slot:
         self.requests = 0
         self.last_used: float | None = None
         self.lock = asyncio.Lock()
+        self._gate: asyncio.Semaphore | None = None
+        self.next_start = 0.0  # monotonic
+        self.active = 0
+
+    def gate(self, settings: Settings) -> asyncio.Semaphore:
+        if self._gate is None:
+            self._gate = asyncio.Semaphore(max(1, settings.account_concurrency))
+        return self._gate
+
+    async def paced(self, settings: Settings, call: Callable[..., Awaitable[T]], *args: Any) -> T:
+        """Run ``call`` within the account's concurrency and start-interval limits,
+        through the account's proxy."""
+        async with self.gate(settings):
+            wait = self.next_start - time.monotonic()
+            if wait > 0:
+                await asyncio.sleep(wait)
+            self.next_start = time.monotonic() + settings.account_min_interval
+            token = egress.set(self.account.proxy or settings.http_proxy)
+            self.active += 1
+            try:
+                return await call(*args)
+            finally:
+                self.active -= 1
+                egress.reset(token)
+
+    def abuse_flag(self) -> dict | None:
+        """The abuse status when Google flagged the account, else None."""
+        status = getattr(self.client, "abuse_status", None) if self.client else None
+        if isinstance(status, dict) and status.get("is_clean") is False:
+            return status
+        return None
 
     @property
     def id(self) -> str:
@@ -265,6 +298,7 @@ class Slot:
             "state": self.state(),
             "error": self.error,
             "requests": self.requests,
+            "active": self.active,
             "last_used": self.last_used,
             "cooldowns": {k: v for k, v in self.cooldowns.items() if v > now},
             "models": sorted(
@@ -338,7 +372,7 @@ class AccountPool:
             if not slot.account.enabled or slot.id in exclude or slot.cooling(key):
                 continue
             client = await slot.ensure(settings)
-            if client is None or not _client_authenticated(client):
+            if self.flag_if_abused(slot) or client is None or not _client_authenticated(client):
                 continue
             if model is None:
                 return Lease(slot, client, None)
@@ -377,7 +411,7 @@ class AccountPool:
             slot.requests += 1
             slot.last_used = time.time()
             try:
-                return await call(lease.client, lease.runtime)
+                return await slot.paced(settings, call, lease.client, lease.runtime)
             except (QuotaExceededError, UsageLimitExceededError) as exc:
                 until = (
                     time.time() + cooldown_seconds
@@ -401,6 +435,19 @@ class AccountPool:
                     raise
                 slot.logged_out(f"session lost during a request: {exc}")
                 last = exc
+
+    def flag_if_abused(self, slot: Slot) -> bool:
+        """Switch off an account Google flagged for abuse: more traffic only makes it worse."""
+        status = slot.abuse_flag()
+        if status is None or not slot.account.enabled:
+            return status is not None
+        logger.warning("account %s: flagged by Google (%s), switching it off", slot.id, status)
+        slot.error = (
+            f"Google flagged the account (abuse status {status}); switched off automatically"
+        )
+        if self.store is not None:
+            self.store.update(slot.id, enabled=False)
+        return True
 
     def summary(self) -> str:
         states = ", ".join(f"{s.id}={s.state()}" for s in self.ordered()) or "none configured"

@@ -81,10 +81,11 @@ def test_add_sign_in_through_the_browser_and_list(client, monkeypatch):
 
     opened: list[str] = []
 
-    async def open_sign_in(url):
+    async def open_sign_in(url, proxy=None):
         opened.append(url)
+        return "ctx1"
 
-    async def take_session(url):
+    async def take_session(url, context=None):
         return {"__Secure-1PSID": "sid-pro", "__Secure-1PSIDTS": "ts"}, "pro@example.com"
 
     monkeypatch.setattr(accounts, "open_sign_in", open_sign_in)
@@ -117,7 +118,7 @@ def test_add_sign_in_through_the_browser_and_list(client, monkeypatch):
 def test_finish_before_signing_in_is_refused(client, monkeypatch):
     from gemini_webapi_proxy.routes import accounts
 
-    async def take_session(url):
+    async def take_session(url, context=None):
         return {"NID": "n"}, None
 
     monkeypatch.setattr(accounts, "take_session", take_session)
@@ -146,8 +147,8 @@ def test_paste_cookies_patch_and_delete(client):
 def test_abandoned_sign_in_lapses(client, monkeypatch):
     from gemini_webapi_proxy.routes import accounts
 
-    async def open_sign_in(url):
-        return None
+    async def open_sign_in(url, proxy=None):
+        return "ctx1"
 
     monkeypatch.setattr(accounts, "open_sign_in", open_sign_in)
     c = _signed_in(client)
@@ -156,3 +157,43 @@ def test_abandoned_sign_in_lapses(client, monkeypatch):
     assert c.post("/admin/accounts/pro/login/start").status_code == 409
     pool_module.signing_in_since -= pool_module.SIGN_IN_SECONDS + 1
     assert c.post("/admin/accounts/pro/login/start").status_code == 200
+
+
+def test_proxy_is_set_checked_masked_and_used_for_sign_in(client, monkeypatch):
+    from gemini_webapi_proxy.routes import accounts
+
+    checked: list = []
+
+    async def egress_check(proxy):
+        checked.append(proxy)
+        return {"ip": "193.180.210.131", "country": "DK", "checked_at": 1.0, "proxy": proxy}
+
+    proxies: list = []
+
+    async def open_sign_in(url, proxy=None):
+        proxies.append(proxy)
+        return "ctx1"
+
+    monkeypatch.setattr(accounts, "egress_check", egress_check)
+    monkeypatch.setattr(accounts, "open_sign_in", open_sign_in)
+    c = _signed_in(client)
+    assert c.post("/admin/accounts/default/proxy", json={"proxy": "ftp://x"}).status_code == 400
+    r = c.post("/admin/accounts/default/proxy", json={"proxy": "http://127.0.0.1:10812"}).json()
+    assert r["proxy"] == "http://127.0.0.1:10812" and r["egress"]["country"] == "DK"
+    assert r["proxy_set_at"]
+    c.post("/admin/accounts/default/login/start")
+    assert proxies == ["http://127.0.0.1:10812"]
+    # A proxy with a login works for requests but is never shown back in full.
+    store = AccountStore(get_settings().data_dir / "accounts.json")
+    store.update("default", proxy="http://u:secret@1.2.3.4:8080")
+    pool_module.pool.configure(get_settings())
+    pool_module.pool.store.load()
+    pool_module.pool.sync()
+    listed = c.get("/admin/accounts").json()["accounts"][0]
+    assert listed["proxy"] == "http://u:***@1.2.3.4:8080"
+    assert (
+        c.post(
+            "/admin/accounts/default/proxy", json={"proxy": "http://u:p@1.2.3.4:8080"}
+        ).status_code
+        == 400
+    )

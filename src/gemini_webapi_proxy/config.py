@@ -95,6 +95,10 @@ class Settings(BaseSettings):
     # An account whose quota ran out is skipped until the reset time Gemini reported,
     # or for this long when it did not report one.
     quota_cooldown: float = 1800.0
+    # Per account: generations at once, and the pause between two starts.  A person
+    # in a browser does not fire a burst of parallel prompts; agents do.
+    account_concurrency: int = 2
+    account_min_interval: float = 1.5
     # Video limits are not reported at all; Gemini resets them daily.
     video_cooldown: float = 6 * 3600.0
     probe_on_start: bool = False

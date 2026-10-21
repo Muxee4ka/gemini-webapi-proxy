@@ -467,7 +467,9 @@ function accountCard(a, i, n) {
       <button class="sm" data-act="up" ${i === 0 ? "disabled" : ""} title="Выше">↑</button>
       <button class="sm" data-act="down" ${i === n - 1 ? "disabled" : ""} title="Ниже">↓</button>
     </div>
-    <div class="acc-meta"><span>запросов: ${num(a.requests)}</span><span>последний: ${rel(a.last_used)}</span><span>вход: ${when(a.signed_in_at)}</span></div>
+    <div class="acc-meta"><span>запросов: ${num(a.requests)}</span>${a.active ? `<span>сейчас в работе: ${a.active}</span>` : ""}
+      <span>последний: ${rel(a.last_used)}</span><span>вход: ${when(a.signed_in_at)}</span></div>
+    <div class="acc-meta">${egressLine(a)}</div>
     ${a.models.length ? `<div class="chips sec">${a.models.map((m) => `<span class="chip">${esc(m)}</span>`).join("")}</div>` : ""}
     ${cds.length ? `<div class="sec row small">${status("лимит", "warning")}${cds.map(([k, t]) => `<span>${esc(k)} до ${esc(clock(t, true))} (${rel(t)})</span>`).join(" · ")}
       <button class="sm" data-act="cooldowns">Сбросить</button></div>` : ""}
@@ -476,11 +478,22 @@ function accountCard(a, i, n) {
     <div class="acc-actions">
       <button class="primary" data-act="signin">${a.state === "ok" ? "Перелогинить" : "Войти"}</button>
       <button data-act="cookies">Вставить cookies</button>
+      <button data-act="proxy">Прокси…</button>
+      <button data-act="egress" title="Какой IP и страну видит Google">Проверить выход</button>
       <button data-act="check" title="Переподключиться к Google и перечитать лимиты">Проверить</button>
       <button data-act="toggle">${a.enabled ? "Выключить" : "Включить"}</button>
       <button data-act="rename">Переименовать</button>
       <button class="danger" data-act="delete">Удалить</button>
     </div></div>`;
+}
+
+function egressLine(a) {
+  const e = a.egress, via = a.proxy ? `через <span class="mono">${esc(a.proxy)}</span>` : "напрямую (IP сервера)";
+  if (!e) return `<span>выход: ${via}</span><span class="muted">не проверен</span>`;
+  if (e.error) return `<span>выход: ${via}</span>${status("прокси не отвечает", "critical")}<span class="err">${esc(e.error.slice(0, 120))}</span>`;
+  const signedBefore = a.proxy_set_at && a.signed_in_at && a.signed_in_at < a.proxy_set_at;
+  return `<span>выход: <b>${esc([e.country, e.city].filter(Boolean).join(" · "))}</b> <span class="mono">${esc(e.ip)}</span></span>
+    <span class="muted">${esc(e.org || "")}</span><span>${via}</span><span class="muted">проверен ${rel(e.checked_at)}</span>${signedBefore ? status("войди заново через прокси", "warning") : ""}`;
 }
 
 PAGES.requests = async () => {
@@ -693,7 +706,8 @@ PAGES.system = async () => {
     <div class="card"><h2>Настройки</h2>${kv({ "источник cookies (default)": esc(s.settings.cookie_source),
       "API key задан": yn(s.settings.api_key), "отдельный пароль админки": yn(s.settings.admin_password),
       "таймауты чат / картинка / видео": `${s.settings.chat_timeout} / ${s.settings.image_timeout} / ${s.settings.video_timeout} с`,
-      "пауза после лимита": `${s.settings.quota_cooldown / 60} мин (видео ${s.settings.video_cooldown / 3600} ч)` })}</div>
+      "пауза после лимита": `${s.settings.quota_cooldown / 60} мин (видео ${s.settings.video_cooldown / 3600} ч)`,
+      "на аккаунт одновременно": `${s.settings.account_concurrency}, пауза между стартами ${s.settings.account_min_interval} с` })}</div>
   </div>`;
 };
 
@@ -752,6 +766,12 @@ view().addEventListener("click", (ev) => {
     case "cooldowns": return act(() => api("DELETE", `${path}/cooldowns`), "Лимиты сброшены");
     case "rename": { const n = prompt("Новое имя", a.name); if (n) act(() => api("PATCH", path, { name: n })); return; }
     case "delete": if (confirm(`Удалить аккаунт «${a.name}»? Сессия в прокси будет забыта.`)) act(() => api("DELETE", path), "Удалён"); return;
+    case "proxy": {
+      const v = prompt("Прокси для этого аккаунта (http://host:port или socks5://host:port).\nПусто — напрямую.\nНа innon: http://127.0.0.1:10812 — выход через webdock (DK).", a.proxy || "");
+      if (v === null) return;
+      return act(() => api("POST", `${path}/proxy`, { proxy: v }), "Прокси сохранён и проверен. Перелогинь аккаунт, чтобы вход тоже шёл через него.");
+    }
+    case "egress": btn.disabled = true; btn.textContent = "Проверяю…"; return act(() => api("POST", `${path}/proxy/check`), "Выход проверен");
     case "cookies": cookiesFor = id; $("#cookies-name").textContent = a.name; $("#cookies-input").value = ""; $("#cookies-dlg").showModal(); return;
     case "signin": return act(() => startSignin(a));
   }

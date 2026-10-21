@@ -249,6 +249,8 @@ async def system() -> dict:
             "video_timeout": settings.video_timeout,
             "quota_cooldown": settings.quota_cooldown,
             "video_cooldown": settings.video_cooldown,
+            "account_concurrency": settings.account_concurrency,
+            "account_min_interval": settings.account_min_interval,
             "image_keep_hours": settings.image_keep_hours,
             "video_keep_hours": settings.video_keep_hours,
         },

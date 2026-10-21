@@ -16,6 +16,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 ACCOUNTS_FILE = "accounts.json"
 
@@ -30,12 +31,29 @@ class Account:
     cookies: dict[str, str] = field(default_factory=dict)
     email: str | None = None
     signed_in_at: float | None = None
+    # Outbound proxy towards Google for this account (http://, socks5://); None: direct.
+    proxy: str | None = None
+    egress: dict | None = None  # last proxy check: ip, country, city, org, checked_at
+    proxy_set_at: float | None = None  # a sign-in before this came from another address
 
     def public(self) -> dict:
-        """The account without its cookies."""
+        """The account without its cookies and with any proxy password masked."""
         out = asdict(self)
         out.pop("cookies")
+        out["proxy"] = mask_proxy(self.proxy)
+        if self.egress:
+            out["egress"] = {**self.egress, "proxy": mask_proxy(self.egress.get("proxy"))}
         return out
+
+
+def mask_proxy(proxy: str | None) -> str | None:
+    if not proxy:
+        return proxy
+    parts = urlsplit(proxy)
+    if not parts.password:
+        return proxy
+    host = parts.hostname + (f":{parts.port}" if parts.port else "")
+    return f"{parts.scheme}://{parts.username}:***@{host}"
 
 
 def slugify(name: str) -> str:

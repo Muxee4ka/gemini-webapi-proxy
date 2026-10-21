@@ -232,3 +232,37 @@ async def test_a_model_the_account_never_had_costs_no_refresh(accounts):
     free.client.models = []
     await free.runtime("gemini-flash")
     assert refreshed == [1]
+
+
+async def test_calls_go_through_the_account_proxy_and_are_paced(accounts, monkeypatch):
+    from gemini_webapi_proxy.egress import egress
+
+    settings = get_settings().model_copy(update={"account_min_interval": 0.3})
+    store = pool_module.pool.configure(settings)
+    store.update("free", proxy="http://127.0.0.1:10812")
+    seen: list = []
+
+    async def call(client, runtime):
+        seen.append((client.account_id, egress.get(), time.monotonic()))
+        return "ok"
+
+    await pool_module.pool.run(settings, "gemini-flash", call)
+    await pool_module.pool.run(settings, "gemini-flash", call)
+    await pool_module.pool.run(settings, "gemini-pro", call)
+    assert [s[:2] for s in seen] == [
+        ("free", "http://127.0.0.1:10812"),
+        ("free", "http://127.0.0.1:10812"),
+        ("pro", None),
+    ]
+    assert seen[1][2] - seen[0][2] >= settings.account_min_interval - 0.05
+    assert egress.get() is None
+
+
+async def test_an_account_flagged_for_abuse_is_switched_off(accounts):
+    settings = get_settings()
+    await _who(settings, "gemini-flash")
+    free = pool_module.pool.slots["free"]
+    free.client.abuse_status = {"is_clean": False, "status_code": 3}
+    assert await _who(settings, "gemini-flash") == "pro"
+    assert free.account.enabled is False and "flagged" in free.error
+    assert AccountStore(settings.data_dir / "accounts.json").get("free").enabled is False
