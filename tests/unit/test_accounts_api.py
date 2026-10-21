@@ -205,3 +205,12 @@ def test_sorry_redirect_names_the_address_google_saw():
     loc = "https://www.google.com/sorry/index?continue=https://gemini.google.com/app&q=EgRoHOmqGPD04tYGIjCHqmt3F72wtLA9SkHwGls27uTP"
     assert _sorry_ip(loc) == "104.28.233.170"
     assert _sorry_ip("") is None
+
+
+def test_ui_vendor_scripts_are_served_from_the_package(client):
+    resp = client.get("/admin/ui/vendor/marked.min.js")
+    assert resp.status_code == 200 and "marked" in resp.text[:200]
+    assert resp.headers["content-type"].startswith("text/javascript")
+    assert client.get("/admin/ui/vendor/purify.min.js").status_code == 200
+    assert client.get("/admin/ui/vendor/..%2F..%2Fconfig.py").status_code == 404
+    assert client.get("/admin/ui/vendor/index.html").status_code == 404

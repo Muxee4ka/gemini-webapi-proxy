@@ -155,8 +155,23 @@ video { width: 100%; border-radius: 8px; background: #000; display: block; }
 
 /* ---- playground ---- */
 .pg-form { display: grid; gap: 12px; }
-.pg-out { white-space: pre-wrap; word-break: break-word; line-height: 1.55; }
-.pg-out img { max-width: 100%; border-radius: 8px; margin-top: 8px; }
+.pg-out { word-break: break-word; line-height: 1.6; }
+.pg-out.plain { white-space: pre-wrap; }
+.md > :first-child { margin-top: 0; } .md > :last-child { margin-bottom: 0; }
+.md h1, .md h2, .md h3, .md h4 { margin: 1em 0 .4em; line-height: 1.3; }
+.md h1 { font-size: 1.35em; } .md h2 { font-size: 1.2em; } .md h3 { font-size: 1.08em; } .md h4 { font-size: 1em; }
+.md p, .md ul, .md ol, .md blockquote, .md pre, .md table { margin: .6em 0; }
+.md ul, .md ol { padding-left: 1.4em; } .md li + li { margin-top: .2em; }
+.md code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: .9em; background: var(--chip);
+  padding: .1em .35em; border-radius: 4px; }
+.md pre { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; overflow-x: auto; }
+.md pre code { background: none; padding: 0; font-size: 12.5px; }
+.md blockquote { border-left: 3px solid var(--line); padding: 0 0 0 12px; color: var(--fg2); }
+.md table { border-collapse: collapse; display: block; overflow-x: auto; }
+.md th, .md td { border: 1px solid var(--line); padding: 5px 9px; text-align: left; position: static; }
+.md hr { border: 0; border-top: 1px solid var(--line); margin: 1em 0; }
+.md img { max-width: 100%; }
+.pg-out img, .pg-img { max-width: 100%; border-radius: 8px; margin-top: 8px; display: block; }
 .spinner { width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%;
   display: inline-block; animation: spin .8s linear infinite; vertical-align: -2px; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -251,6 +266,8 @@ dialog h3 { margin: 0 0 8px; font-size: 15px; }
   <p id="lb-prompt" class="small fg2" style="white-space:pre-wrap"></p>
 </dialog>
 
+<script src="/admin/ui/vendor/marked.min.js"></script>
+<script src="/admin/ui/vendor/purify.min.js"></script>
 <div id="tip"></div>
 <div id="toast"></div>
 
@@ -315,6 +332,16 @@ const when = (ts) => ts ? `${clock(ts, true)} · ${rel(ts)}` : "—";
 const status = (label, kind) => `<span class="status ${kind || ""}"><i></i>${esc(label)}</span>`;
 const okStatus = (code) => code < 400 ? status(code, "good") : code === 429 ? status(code, "warning") : status(code || "—", "critical");
 const view = () => $("#view");
+// Model answers are Markdown; the HTML marked makes is sanitised before it is shown
+// (this page runs with the admin session).
+function md(text) {
+  if (!window.marked || !window.DOMPurify) return `<div class="plain">${esc(text)}</div>`;
+  const html = marked.parse(String(text || ""), { gfm: true, breaks: true });
+  return DOMPurify.sanitize(html, { FORBID_TAGS: ["style", "form", "input", "button"], FORBID_ATTR: ["style"] });
+}
+if (window.DOMPurify) DOMPurify.addHook("afterSanitizeAttributes", (n) => {
+  if (n.tagName === "A") { n.setAttribute("target", "_blank"); n.setAttribute("rel", "noopener noreferrer"); }
+});
 function head(title, sub, extra = "") {
   return `<div class="page-head"><h1>${title}</h1>${sub ? `<span class="sub">${sub}</span>` : ""}<span class="sp"></span>${extra}</div>`;
 }
@@ -628,7 +655,16 @@ PAGES.playground = async () => {
       $("#pg-result").innerHTML = `<div class="row small fg2" style="margin-bottom:10px">${status("готово", "good")}
           <span>аккаунт: <b>${esc(r.account || "—")}</b></span>${r.tried.length > 1 ? `<span>переключения: ${esc(r.tried.join(" → "))}</span>` : ""}
           <span>${esc(r.model || "")}</span><span class="sp"></span><span>${ms(r.ms)}</span></div>
-        <div class="pg-out">${esc(r.text)}${r.images.map((b) => `<img src="data:image/jpeg;base64,${b}" alt="">`).join("")}</div>`;
+        <div class="row" style="justify-content:flex-end;margin:-4px 0 6px"><div class="seg">
+          <button class="sm on" data-view="md">Markdown</button><button class="sm" data-view="raw">Текст</button></div></div>
+        <div class="pg-out md" id="pg-text">${md(r.text)}</div>
+        ${r.images.map((b) => `<img class="pg-img" src="data:image/jpeg;base64,${b}" alt="">`).join("")}`;
+      $("#pg-result").querySelectorAll("[data-view]").forEach((b) => (b.onclick = () => {
+        $("#pg-result").querySelectorAll("[data-view]").forEach((x) => x.classList.toggle("on", x === b));
+        const box = $("#pg-text");
+        box.className = b.dataset.view === "md" ? "pg-out md" : "pg-out plain";
+        box.innerHTML = b.dataset.view === "md" ? md(r.text) : esc(r.text);
+      }));
     } catch (err) {
       $("#pg-result").innerHTML = `<div class="row" style="margin-bottom:8px">${status("ошибка", "critical")}</div><div class="err">${esc(err.message)}</div>`;
     } finally {

@@ -52,6 +52,21 @@ async def ui_page() -> HTMLResponse:
     return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
 
+_VENDOR = {"marked.min.js", "purify.min.js"}  # Markdown for the playground, sanitised
+
+
+@ui_router.get("/ui/vendor/{name}", include_in_schema=False)
+async def ui_vendor(name: str) -> Response:
+    if name not in _VENDOR:
+        raise HTTPException(status_code=404)
+    body = resources.files("gemini_webapi_proxy").joinpath(f"ui/vendor/{name}").read_bytes()
+    return Response(
+        body,
+        media_type="text/javascript",
+        headers={"Cache-Control": "public, max-age=604800, immutable"},
+    )
+
+
 class SessionIn(BaseModel):
     password: str
 
