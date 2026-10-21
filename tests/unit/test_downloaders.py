@@ -60,10 +60,8 @@ def test_sanitize_download_cookies() -> None:
     assert out == {"__Secure-1PSID": "a", "SAPISID": "c"}
 
 
-def test_all_five_downloaders_registered() -> None:
+def test_all_downloaders_registered() -> None:
     expected = {
-        "playwright-rpc",
-        "playwright-preview",
         "httpx-rpc",
         "httpx-preview",
         "library-save",

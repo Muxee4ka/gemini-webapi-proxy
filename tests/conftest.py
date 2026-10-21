@@ -27,6 +27,8 @@ def _isolated_settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # Disable browser cookie source by default; tests opt in by overriding.
     monkeypatch.setenv("GOP_COOKIE_SOURCE", "env")
     monkeypatch.setenv("GOP_PROBE_ON_START", "false")
+    # Accounts pace their requests; tests should not wait for it.
+    monkeypatch.setenv("GOP_ACCOUNT_MIN_INTERVAL", "0")
     # Keep httpx quiet in tests.
     monkeypatch.setenv("GOP_LOG_LEVEL", "WARNING")
     # Reset module-level cache.

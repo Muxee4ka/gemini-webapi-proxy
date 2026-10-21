@@ -16,6 +16,7 @@ from gemini_webapi_proxy.auth import require_api_key_if_configured
 from gemini_webapi_proxy.config import get_settings
 from gemini_webapi_proxy.routes._errors import error_json
 from gemini_webapi_proxy.services import video
+from gemini_webapi_proxy.stats import note
 from gemini_webapi_proxy.utils.media import normalize_image_field
 
 router = APIRouter(
@@ -61,6 +62,7 @@ async def create_video(request: Request):
         size=fields.get("size") or None,
         references=refs,
     )
+    note(model=job.model, video=job.id)
     return job.to_openai()
 
 

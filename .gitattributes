@@ -23,3 +23,5 @@
 # Export with CRLF on Windows (helps shell-script users there)
 *.bat             text eol=crlf
 *.cmd             text eol=crlf
+*.ps1             text eol=crlf
+Dockerfile        text eol=lf

@@ -13,15 +13,13 @@ been "warmed" by visiting `gemini.google.com` first.
 ## Default chain
 
 ```
-GOP_DOWNLOADER_CHAIN=playwright-rpc,playwright-preview,httpx-rpc,httpx-preview,library-save
+GOP_DOWNLOADER_CHAIN=httpx-rpc,httpx-preview,library-save
 ```
 
 | Strategy | Starts from | Transport | Why it's in the chain |
 |----------|-------------|-----------|-----------------------|
-| `playwright-rpc` | RPC full-size URL | Chromium request context | Most reliable on gg-dl/lh3; matches what Google expects. |
-| `playwright-preview` | preview `image.url` | Chromium request context | Fallback when the RPC URL is missing cid/rid. |
-| `httpx-rpc` | RPC full-size URL | httpx | Lighter weight; sometimes works where Playwright doesn't. |
-| `httpx-preview` | preview `image.url` | httpx | Same, for the preview URL. |
+| `httpx-rpc` | RPC full-size URL | httpx | Full-size image; the strategy that serves real traffic. |
+| `httpx-preview` | preview `image.url` | httpx | Fallback when the RPC URL is missing cid/rid. |
 | `library-save` | `image.save()` | gemini-webapi's own downloader | Last resort; uses the library's proven code path. |
 
 ## Configuring
@@ -29,9 +27,6 @@ GOP_DOWNLOADER_CHAIN=playwright-rpc,playwright-preview,httpx-rpc,httpx-preview,l
 Reorder, enable, or disable strategies by editing the chain:
 
 ```bash
-# Disable Playwright (no Chromium install required)
-export GOP_DOWNLOADER_CHAIN='httpx-rpc,httpx-preview,library-save'
-
 # Only the library path (cheapest, lowest success rate)
 export GOP_DOWNLOADER_CHAIN='library-save'
 ```
@@ -61,7 +56,7 @@ class MyDownloader(BaseDownloader):
 Then enable it in the chain:
 
 ```bash
-export GOP_DOWNLOADER_CHAIN='playwright-rpc,my-strategy,httpx-rpc,...'
+export GOP_DOWNLOADER_CHAIN='httpx-rpc,my-strategy,httpx-preview,...'
 ```
 
 ## Why not just `curl` Google CDN directly?
@@ -79,8 +74,7 @@ Hops 1 and 2 require:
 1. A valid `__Secure-1PSID` cookie (we have it)
 2. A Referer header from `gemini.google.com` (we send it)
 3. A User-Agent and TLS fingerprint that look like a real browser
-   (Playwright / curl_cffi handle this; raw `requests` and `httpx`
-   often get 403)
+   (curl_cffi handles this; raw `requests` may get 403)
 
 The proxy shields downstream clients from this complexity by always
 returning base64-encoded bytes.

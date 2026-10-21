@@ -1,4 +1,6 @@
-# Run next to the proxy (both on the host network) and set in the proxy:
+# Run next to the proxy (both on the host network). DevTools on 127.0.0.1:9223,
+# noVNC on 127.0.0.1:6080 (shown by the proxy's admin UI, see docs/accounts.md).
+# For the single-account cdp source set in the proxy:
 #   GOP_COOKIE_SOURCE=cdp
 #   GOP_CDP_URL=http://127.0.0.1:9223
 services:

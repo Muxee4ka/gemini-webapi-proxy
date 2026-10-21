@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased] — fork Muxee4ka/gemini-webapi-proxy
 
 ### Added
+- Telegram bot (admin UI → Telegram; `docs/telegram.md`): admins linked by a one-time
+  link, `/status`, `/accounts` with enable/disable/reset/check buttons, `/stats`, `/events`;
+  alerts from the pool (`events.py`): logged out, abuse flag, quota, 429, all accounts
+  down, recovered — throttled to once per 30 min per account and kind
+- `scripts/install.ps1` (Windows, Docker Desktop) and `docker-compose.desktop.yml`: no host
+  networking, the browser shares the proxy's network, only the proxy port is published;
+  `install.sh --desktop` (automatic on macOS). Browser profile in a named volume.
+  `.gitattributes` keeps `*.sh` LF on Windows checkouts
+- `scripts/install.sh`: one-command server install. Root `docker-compose.yml` now runs
+  the proxy and the sign-in browser together (cookie source `cdp`, no default HTTP proxy,
+  browser ports via `GOP_CDP_PORT` / `GOP_VNC_PORT` / `GOP_RFB_PORT`); the macOS Safari
+  flow (`scripts/docker-up.sh`) keeps `GOP_COOKIE_SOURCE=env` and starts the proxy only
+- `data/` is ignored by git and left out of the Docker build context (it holds account
+  cookies, client keys and the request journal)
 - `stream=true` for chat completions (the answer is generated in full, then sent as SSE)
 - Tool-calling emulation: OpenAI `tools` → prompt block, `<tool_calls>` answer → `tool_calls`
 - `POST /openai/v1/images/edits` — instruction-based edits of uploaded images
@@ -21,12 +35,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `GET /admin/quota` — the account's limits as gemini-webapi last read them: credits
   per model, 5-hour and weekly usage, tier, reset times (the video limit is not reported)
 
+- Several Google accounts (`<data_dir>/accounts.json`): requests go to the first account
+  in priority order that has the model; on exhausted quota or a lost session the request
+  moves to the next account, the first one cools down per model until its reset time
+  (`GOP_QUOTA_COOLDOWN`, `GOP_VIDEO_COOLDOWN`). `docs/accounts.md`
+- Admin UI `/admin/ui` (`GOP_ADMIN_PASSWORD`): accounts' state, models, limits and
+  cooldowns; sign-in through the server's browser shown over noVNC (`GOP_VNC_URL`; the
+  cdp-browser image serves it), after which the browser clears all its cookies; pasting a
+  cookie string; enable/disable, reorder, check. API under `/admin/accounts`
+- `UsageLimitExceededError` is 429 (was 500); a temporarily blocked IP is 503
+
 ### Fixed
+- Data dir in the Docker image is `/app/data` (`GOP_DATA_DIR`): the model registry and
+  videos used to land in `/src/data` inside the container, outside the volume
 - Video jobs: the stream is allowed to stay silent for `GOP_VIDEO_TIMEOUT` and the prompt
   is never re-sent (Veo answers after minutes; the 120 s watchdog used to drop the turn
   and send the prompt again)
 
 ### Changed
+- Docker image 2.86 GB → ~210 MB: `python:3.12-slim`, no Playwright/Chromium. The
+  Playwright downloaders are removed (they always failed on a missing setting, images came
+  through `httpx-rpc`); the `cdp` source speaks DevTools over a plain websocket
 - `gemini-webapi` ≥ 2.1.1: the model list is the account's live list
   (`gemini-flash`, `gemini-pro`, `gemini-argon`, `gemini-flash-lite`); image aliases route there
 - Chat refusals are 502 instead of 403; exhausted quota is 429 instead of 500

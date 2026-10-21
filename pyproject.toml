@@ -45,7 +45,7 @@ dependencies = [
   "pydantic-settings>=2.1",
   "httpx>=0.27",
   "curl-cffi>=0.7",
-  "playwright>=1.49",
+  "websockets>=13",
   "gemini-webapi>=2.1.1,<3",
   "python-dotenv>=1.0",
 ]
@@ -139,6 +139,11 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+# Russian user-facing texts (bot messages, alert titles): Cyrillic is intended
+"src/gemini_webapi_proxy/telegram_bot.py" = ["RUF001"]
+"src/gemini_webapi_proxy/events.py" = ["RUF001"]
+"src/gemini_webapi_proxy/client/pool.py" = ["RUF001"]
+"tests/unit/test_telegram.py" = ["RUF001", "S101", "PLR2004", "ARG", "PT011"]
 "tests/**/*.py" = ["S101", "PLR2004", "ARG", "PT011"]
 "scripts/**" = ["T201"]
 "docs/**" = ["RUF"]

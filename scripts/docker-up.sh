@@ -26,6 +26,8 @@ fi
 export GOP_PORT="${GOP_PORT:-4982}"
 export GOP_BROWSER="${GOP_BROWSER:-safari}"
 export GOP_HTTP_PROXY="${GOP_HTTP_PROXY:-http://127.0.0.1:7897}"
+# This flow feeds cookies through env (data/runtime.env), not the sign-in browser.
+export GOP_COOKIE_SOURCE="${GOP_COOKIE_SOURCE:-env}"
 # Used by the Dockerfile to talk to apt/pip during `docker build`.  Defaults
 # to GOP_HTTP_PROXY; override with GOP_BUILD_HTTP_PROXY if your build
 # network is different (e.g. CI without a local proxy).
@@ -45,8 +47,9 @@ echo "== Build & start (restart: unless-stopped, host network) =="
 GOP_PORT="${GOP_PORT}" \
 GOP_BUILD_HTTP_PROXY="${GOP_BUILD_HTTP_PROXY}" \
 GOP_HTTP_PROXY="${GOP_HTTP_PROXY}" \
+GOP_COOKIE_SOURCE="${GOP_COOKIE_SOURCE}" \
 HTTP_PROXY= HTTPS_PROXY= http_proxy= https_proxy= \
-  docker compose up -d --build
+  docker compose up -d --build gemini-webapi-proxy
 
 echo "== Waiting for /health =="
 for _ in $(seq 1 40); do

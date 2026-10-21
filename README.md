@@ -104,13 +104,75 @@ client — without copy-pasting prompts into the web UI.
 - ✏️ **Image edits** — `POST /openai/v1/images/edits`: upload an image, describe the change
 - 🎬 **Video generation (Veo)** — OpenAI Videos API shape: `POST /openai/v1/videos` → job → mp4
 - 🍪 **Pluggable cookie sources** — desktop browser (Safari/Chrome/…), env vars, Netscape cookie file
-- 🐳 **One-command Docker** — `docker compose up -d`, auto-restart, host network bridge for the local proxy
-- 🔌 **Multi-fallback image download** — Playwright Chromium → httpx → curl_cffi → library save
+- 👥 **Several accounts + admin UI** — `/admin/ui`: state and limits per account, sign-in through the server's browser, automatic switch when an account runs out, a proxy per account, request journal, client keys, playground ([docs/accounts.md](docs/accounts.md))
+- 🤖 **Telegram bot** — account status and controls, alerts on logged-out / flagged / exhausted accounts ([docs/telegram.md](docs/telegram.md))
+- 🐳 **One-command install** — `scripts/install.sh` (Linux, macOS) / `scripts/install.ps1` (Windows): proxy + sign-in browser in Docker, keys generated, auto-restart
+- 🔌 **Multi-fallback image download** — httpx (RPC / preview URL) → gemini-webapi library save; no browser in the image
 - 🛡 **Upstream refusal detection** — Gemini "I cannot fulfill…" answers become errors (403 images / 502 chat), exhausted quota → 429
 - 🛠 **Optional API key** — `GOP_API_KEY=...` enables Bearer auth; empty = off (local-only default)
 - 📋 **Live model list** — the account's models (`gemini-flash`, `gemini-pro`, `gemini-argon`, `gemini-flash-lite`) plus stable `gemini-2.5-*-image` aliases via `/openai/v1/models`
 
 ## 🚀 Quick Start
+
+### One command (Docker: several accounts, admin UI)
+
+Installs the proxy and the browser used to sign in to Google accounts. The script
+writes `.env` (a generated API key and admin password), builds and starts both
+containers, waits for `/health` and prints the admin UI address and password.
+Running it again keeps `.env` and the data and rebuilds/restarts.
+
+**Linux** (Docker Engine + Compose v2):
+
+```bash
+git clone -b accounts-wip https://github.com/Muxee4ka/gemini-webapi-proxy
+cd gemini-webapi-proxy
+./scripts/install.sh                       # listens on 127.0.0.1:4982
+./scripts/install.sh --listen 0.0.0.0      # or on all interfaces
+./scripts/install.sh --port 4990           # another port
+```
+
+On a remote server, reach the UI through `ssh -N -L 4982:127.0.0.1:4982 <server>` or put
+it behind nginx with TLS ([docs/accounts.md](docs/accounts.md#setup) has the WebSocket block
+the sign-in screen needs).
+
+**Windows** (Docker Desktop running, PowerShell 5.1 or 7):
+
+```powershell
+git clone -b accounts-wip https://github.com/Muxee4ka/gemini-webapi-proxy
+cd gemini-webapi-proxy
+powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
+# options: -Listen 0.0.0.0  -Port 4990
+```
+
+**macOS** (Docker Desktop running):
+
+```bash
+git clone -b accounts-wip https://github.com/Muxee4ka/gemini-webapi-proxy
+cd gemini-webapi-proxy
+./scripts/install.sh                       # Docker Desktop mode is picked automatically
+```
+
+On Docker Desktop the containers do not use host networking
+([`docker-compose.desktop.yml`](docker-compose.desktop.yml)): the browser shares the proxy's
+network and only the proxy port is published on `127.0.0.1`. A proxy running on the
+computer itself is `http://host.docker.internal:<port>` for an account.
+
+Then, on any system:
+
+1. Open `http://127.0.0.1:4982/admin/ui` and sign in with the printed password
+   (`GOP_ADMIN_PASSWORD` in `.env`). The UI is in Russian.
+2. Press **Войти** on the `default` account and sign in to Google in the browser shown on
+   the page; add more accounts with **+ Аккаунт**, set a proxy per account in its card.
+3. Point OpenAI clients at `http://127.0.0.1:4982/openai/v1` with `Bearer <GOP_API_KEY>`
+   from `.env`, or create a named key per client in the **Ключи** tab.
+
+Manual setup with plain `docker compose`: create `.env` with `GOP_API_KEY=...` and
+`GOP_ADMIN_PASSWORD=...` (`.env.example` is for running from source, not for Docker), then
+`docker compose up -d --build` (Linux) or
+`docker compose -f docker-compose.yml -f docker-compose.desktop.yml up -d --build`
+(Docker Desktop).
+
+### Single account on a desktop
 
 You need either:
 
@@ -134,11 +196,10 @@ git clone https://github.com/Lutiancheng1/gemini-webapi-proxy
 cd gemini-webapi-proxy
 python3 -m venv .venv
 .venv/bin/pip install -e ".[browser-cookie,dev]"
-.venv/bin/playwright install chromium
 ./start.sh
 ```
 
-### Option C: Docker (long-running)
+### Option C: Docker on macOS (cookies from Safari)
 
 ```bash
 git clone https://github.com/Lutiancheng1/gemini-webapi-proxy
@@ -309,7 +370,7 @@ detailed semantics.
 │  └─────────────┘   └──────────────────┘         │
 │                                                 │
 │  ┌────────────────────────── Image download ──┐ │
-│  │ Playwright Chromium  →  httpx  →  curl_cffi │ │
+│  │ httpx (RPC → preview URL)                  │ │
 │  │ →  gemini-webapi library save (last resort)│ │
 │  └────────────────────────────────────────────┘ │
 └────────────────────────────────────────────────┘
@@ -361,7 +422,6 @@ git clone https://github.com/Lutiancheng1/gemini-webapi-proxy
 cd gemini-webapi-proxy
 python3 -m venv .venv
 .venv/bin/pip install -e ".[browser-cookie,dev]"
-.venv/bin/playwright install chromium
 .venv/bin/pytest tests/ -v
 .venv/bin/ruff check
 .venv/bin/ruff format
@@ -383,7 +443,7 @@ The short version:
 | 401 / `AuthError` from upstream | cookie expired | re-login in Safari, re-run `scripts/sync_runtime_env.py`, `docker compose restart` |
 | 403 `"I cannot fulfill..."` | upstream safety filter | try a different prompt, or check the model list |
 | 502 with `Multiple cookies exist` | `.com` vs `.com.hk` duplicates | already auto-filtered; if not, `docker compose restart` |
-| 502 (b64 download) | Playwright missing | `playwright install chromium` (host) or rebuild Docker image |
+| 502 (b64 download) | every downloader failed | check the session (`GET /admin/quota`); the error lists each strategy's reason |
 | Upstream `Unknown model name: gemini-2.5-pro-image` against a `gemini-3-pro` request | fixed in 0.1.0 — re-pull the image and restart | `docker compose pull && docker compose up -d` |
 
 Full troubleshooting matrix: [docs/troubleshooting.md](docs/troubleshooting.md).

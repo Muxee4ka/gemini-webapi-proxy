@@ -13,6 +13,7 @@ htmlcov
 .spec-workflow
 
 .env
+data/
 data/runtime.env
 .envrc
 

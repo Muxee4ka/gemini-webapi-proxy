@@ -18,6 +18,7 @@ cached for the process lifetime. Set them before launching the server.
 | `GOP_LOG_LEVEL` | `INFO` | `DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL`. |
 | `GOP_LOG_FORMAT` | `console` | `console` (human-readable) or `json` (one line per record, for container log scrapers). |
 | `GOP_API_KEY` | _(empty)_ | When non-empty, every request must include `Authorization: Bearer <key>`. When empty, auth is bypassed. |
+| `GOP_ADMIN_PASSWORD` | _(empty)_ | Password of the admin UI (`/admin/ui`); falls back to `GOP_API_KEY`. See [accounts.md](accounts.md). |
 | `GOP_CORS_ORIGINS` | `*` | Comma-separated list, or `*` for any. |
 
 ## Cookie source
@@ -25,7 +26,8 @@ cached for the process lifetime. Set them before launching the server.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `GOP_COOKIE_SOURCE` | `browser` | One of `browser` / `env` / `file` / `cdp`. |
-| `GOP_CDP_URL` | `http://127.0.0.1:9223` | `cdp` only: DevTools endpoint of the browser you sign in with. |
+| `GOP_CDP_URL` | `http://127.0.0.1:9223` | DevTools endpoint of the browser you sign in with (`cdp` source and the admin UI's sign-in). |
+| `GOP_VNC_URL` | `http://127.0.0.1:6080` | noVNC (websockify) of that browser, shown by the admin UI. |
 | `GOP_BROWSER` | `auto` | When `cookie_source=browser`, which browser to read from. `auto` picks the first installed (Safari first on macOS, Chrome first on Linux). |
 | `GOP_COOKIE_FILE` | _(empty)_ | When `cookie_source=file`, path to a Netscape-format `cookies.txt`. |
 | `GOP_GEMINI_1PSID` | _(empty)_ | `__Secure-1PSID` value (env / file modes). |
@@ -69,11 +71,18 @@ source and a worked example of exporting a `cookies.txt`.
 | `GOP_VIDEO_KEEP_HOURS` | `24` | Finished videos (`GOP_DATA_DIR/videos/*.mp4`) and their jobs are dropped after this many hours. |
 | `GEMINI_COOKIE_PATH` | _(temp dir)_ | Read by `gemini-webapi`, not by the proxy: where rotated cookies are cached. Point it into a persistent volume (with `cdp` too: after the hand-over only the proxy has the current cookies) (the compose file uses `/app/data/cookie-cache`). Otherwise a restart can fall back to the original, already rotated `__Secure-1PSIDTS`, the session turns into a logged-out guest and only `gemini-flash-lite` is listed. |
 
+## Accounts
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GOP_QUOTA_COOLDOWN` | `1800` | Seconds an account is skipped for a model after its quota ran out, when Gemini reported no reset time. |
+| `GOP_VIDEO_COOLDOWN` | `21600` | The same for video jobs (Gemini never reports the video limit). |
+
 ## Downloader chain
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GOP_DOWNLOADER_CHAIN` | `playwright-rpc,playwright-preview,httpx-rpc,httpx-preview,library-save` | Ordered list of strategies for turning a `GeneratedImage` into raw bytes. The first strategy to return non-empty bytes wins. |
+| `GOP_DOWNLOADER_CHAIN` | `httpx-rpc,httpx-preview,library-save` | Ordered list of strategies for turning a `GeneratedImage` into raw bytes. The first strategy to return non-empty bytes wins. |
 | `GOP_DOWNLOADER_TIMEOUT` | `120` | Per-strategy timeout in seconds. |
 
 See [downloaders.md](downloaders.md) for what each strategy does and

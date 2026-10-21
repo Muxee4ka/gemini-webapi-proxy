@@ -1,0 +1,26 @@
+# Docker Desktop (Windows, macOS): no host networking needed.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.desktop.yml up -d --build
+#   (scripts/install.ps1 and scripts/install.sh --desktop do this)
+#
+# The browser joins the proxy's network namespace, so 127.0.0.1 is the same inside
+# both and the DevTools / noVNC ports stay private to them. Only the proxy's port is
+# published, on the computer's loopback (GOP_HOST=0.0.0.0 in .env publishes it on
+# all interfaces). A proxy running on the computer itself is reachable from the
+# container as http://host.docker.internal:<port>.
+services:
+  gemini-webapi-proxy:
+    build:
+      network: default
+    network_mode: bridge
+    ports:
+      - "${GOP_HOST:-127.0.0.1}:${GOP_PORT:-4982}:${GOP_PORT:-4982}"
+    environment:
+      GOP_HOST: 0.0.0.0   # inside the container; the published address is set above
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  gemini-browser:
+    build:
+      network: default
+    network_mode: "service:gemini-webapi-proxy"

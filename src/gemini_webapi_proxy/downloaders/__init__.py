@@ -11,8 +11,6 @@ from gemini_webapi_proxy.downloaders import (  # noqa: F401 — side-effect impo
     httpx_preview,
     httpx_rpc,
     library_save,
-    playwright_preview,
-    playwright_rpc,
 )
 from gemini_webapi_proxy.downloaders.base import (
     BaseDownloader,

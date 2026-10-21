@@ -4,7 +4,7 @@ THIS MODULE IS A TRANSITIONAL SHIM. In phase 1.F the inline download chain
 lives in :mod:`gemini_webapi_proxy.downloaders.chain` and each individual
 strategy becomes a :class:`BaseDownloader` subclass.
 
-Only the small helpers used by the httpx/playwright downloaders stay here
+Only the small helpers used by the httpx downloaders stay here
 for now: cookie sanitization, request headers, CDN proxy decision, and
 ``=d-I?alr=yes`` candidate generation.
 """
@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 from gemini_webapi.constants import Headers
 
 from gemini_webapi_proxy.config import Settings
+from gemini_webapi_proxy.egress import egress
 
 # ---- Constants -----------------------------------------------------------
 _GG_DL_MARKERS = ("gg-dl", "googleusercontent.com", "usercontent.google.com")
@@ -108,8 +109,11 @@ def _cdn_proxy(settings: Settings, url: str) -> str | None:
 
     Google CDN hops after ``gg-dl`` often break when forced through a local
     MITM/Clash proxy. Gemini API traffic still uses ``HTTP_PROXY``; CDN
-    downloads go direct.
+    downloads go direct.  An account's own proxy is its address towards Google,
+    so downloads for it go through that one, CDN included.
     """
+    if account_proxy := egress.get():
+        return account_proxy
     if not settings.cdn_direct:
         return settings.http_proxy
     host = urlparse(url).hostname or ""

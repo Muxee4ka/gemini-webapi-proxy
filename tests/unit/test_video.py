@@ -57,21 +57,25 @@ def _fake_client(output, seen: dict | None = None):
 
 
 def _settings(tmp_path):
-    return SimpleNamespace(data_dir=tmp_path, video_timeout=5, video_keep_hours=24, http_proxy=None)
+    return SimpleNamespace(
+        data_dir=tmp_path, video_timeout=5, video_keep_hours=24, video_cooldown=60, http_proxy=None
+    )
 
 
 def _run(monkeypatch, tmp_path, output, client=None) -> video.VideoJob:
-    async def get_client(settings):
-        return client or _fake_client(output)
+    fake = client or _fake_client(output)
+    seen: dict = {}
 
-    async def resolve(client, model_id):
-        return model_id
+    async def run(settings, model, call, **kwargs):
+        seen.update(kwargs)
+        return await call(fake, model)
 
-    monkeypatch.setattr(video, "get_client", get_client)
-    monkeypatch.setattr(video, "_resolve_runtime", resolve)
+    monkeypatch.setattr(video.pool, "run", run)
     monkeypatch.setattr(video, "sanitize_gemini_client_cookies", lambda c: None)
     job = video.VideoJob(id="video_test", model="gemini-flash", prompt="a cat")
     asyncio.run(video.run_job(_settings(tmp_path), job))
+    # Video limits are their own: a used-up video quota must not cool chat down.
+    assert seen["cooldown_key"].startswith("video:")
     return job
 
 
