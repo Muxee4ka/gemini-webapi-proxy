@@ -23,6 +23,12 @@ class QuotaExceededError(RuntimeError):
     http_status = 429
 
 
+class NoAccountError(RuntimeError):
+    """No configured Gemini account is signed in and free to take the request."""
+
+    http_status = 503
+
+
 class UpstreamRefusalError(RuntimeError):
     """Gemini Web returned a policy / capability refusal instead of a real answer.
 

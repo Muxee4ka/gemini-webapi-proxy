@@ -31,10 +31,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from gemini_webapi_proxy.client.pool import get_client
+from gemini_webapi_proxy.client.pool import pool, registry
 from gemini_webapi_proxy.config import Settings
 from gemini_webapi_proxy.downloaders.image_export import sanitize_gemini_client_cookies
-from gemini_webapi_proxy.services.chat import _resolve_runtime, registry
+from gemini_webapi_proxy.errors import QuotaExceededError
 from gemini_webapi_proxy.utils.media import materialize_reference_images
 
 log = logging.getLogger("gemini_webapi_proxy.video")
@@ -66,6 +66,7 @@ class VideoJob:
     path: Path | None = None
     error: dict[str, str] | None = None
     text: str = ""
+    account: str | None = None
 
     def to_openai(self) -> dict[str, Any]:
         return {
@@ -168,17 +169,22 @@ def create_job(
     return job
 
 
+class _UnfinishedError(Exception):
+    """An answer without a video that is not the account's limit: reported, not retried."""
+
+    def __init__(self, kind: str, text: str) -> None:
+        super().__init__(text)
+        self.kind = kind
+
+
 async def run_job(settings: Settings, job: VideoJob) -> None:
     async with _lock:
         job.status = "in_progress"
         ref_paths: list[Path] = []
-        try:
-            client = await get_client(settings)
-            runtime = await _resolve_runtime(client, registry.resolve_id(job.model))
-            if job.references:
-                ref_paths = await materialize_reference_images(
-                    job.references, proxy=settings.http_proxy
-                )
+
+        async def call(client, runtime) -> Path:
+            slot = pool.slot_of(client)
+            job.account = slot.id if slot else None
             sanitize_gemini_client_cookies(client)
             with _patient_stream(client, settings.video_timeout):
                 output = await asyncio.wait_for(
@@ -198,18 +204,43 @@ async def run_job(settings: Settings, job: VideoJob) -> None:
             job.text = (output.text or "").strip()
             videos = list(getattr(output, "videos", None) or [])
             kind = classify(job.text, videos=len(videos), images=len(output.images or []))
+            if kind == "limit":
+                # This account's daily videos are used up: the next account gets the job.
+                raise QuotaExceededError(job.text or "video limit (Gemini answered with an image)")
             if kind != "completed":
-                _fail(job, kind, job.text or "Gemini returned no video")
-                return
+                raise _UnfinishedError(kind, job.text or "Gemini returned no video")
             out_dir = settings.data_dir / "videos"
             saved = await asyncio.wait_for(
                 videos[0].save(path=str(out_dir), filename=job.id), timeout=settings.video_timeout
             )
-            path = Path(saved["video"]) if isinstance(saved, dict) else Path(str(saved))
+            return Path(saved["video"]) if isinstance(saved, dict) else Path(str(saved))
+
+        try:
+            if job.references:
+                ref_paths = await materialize_reference_images(
+                    job.references, proxy=settings.http_proxy
+                )
+            path = await pool.run(
+                settings,
+                registry.resolve_id(job.model),
+                call,
+                cooldown_key=f"video:{registry.resolve_id(job.model)}",
+                cooldown_seconds=settings.video_cooldown,
+            )
             job.path = path
             job.status = "completed"
             job.completed_at = int(time.time())
-            log.info("video %s done: %s (%d bytes)", job.id, path.name, path.stat().st_size)
+            log.info(
+                "video %s done on %s: %s (%d bytes)",
+                job.id,
+                job.account,
+                path.name,
+                path.stat().st_size,
+            )
+        except _UnfinishedError as exc:
+            _fail(job, exc.kind, str(exc))
+        except QuotaExceededError as exc:
+            _fail(job, "limit", str(exc))
         except TimeoutError:
             _fail(job, "glitch", "Video generation timed out")
         except Exception as exc:  # reported to the client through the job

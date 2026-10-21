@@ -316,12 +316,12 @@ def test_resolve_runtime_refreshes_model_list_on_miss(monkeypatch) -> None:
     """A model missing at init (exhausted quota) is picked up after a status refresh."""
     import asyncio
 
-    from gemini_webapi_proxy.services import chat as service
+    from gemini_webapi_proxy.client import pool as pool_module
+    from gemini_webapi_proxy.client.accounts import Account
 
     r = ModelRegistry()
     r.sync_from_client([_mk("gemini-flash-lite", "Flash-Lite", "fast")])
-    monkeypatch.setattr(service, "registry", r)
-    monkeypatch.setattr(service, "_models_refreshed_at", 0.0)
+    monkeypatch.setattr(pool_module, "registry", r)
 
     class Client:
         def __init__(self) -> None:
@@ -333,6 +333,16 @@ def test_resolve_runtime_refreshes_model_list_on_miss(monkeypatch) -> None:
         def list_models(self):
             return self.models
 
-    runtime = asyncio.run(service._resolve_runtime(Client(), "gemini-flash"))
+    slot = pool_module.Slot(Account(id="a", name="a"))
+    slot.client = Client()
+    runtime = asyncio.run(slot.runtime("gemini-flash"))
     assert getattr(runtime, "model_name", runtime) == "gemini-flash"
     assert not isinstance(runtime, str)
+
+
+def test_resolve_runtime_uses_the_given_account_models() -> None:
+    r = ModelRegistry()
+    r.sync_from_client([_mk("gemini-flash", "Flash", "x"), _mk("gemini-pro", "Pro", "y")])
+    free = [_mk("gemini-flash", "Flash", "x")]
+    assert r.resolve_runtime("gemini-pro", free) == "gemini-pro"
+    assert r.resolve_runtime("gemini-flash", free).model_name == "gemini-flash"

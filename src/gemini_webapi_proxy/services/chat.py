@@ -8,7 +8,7 @@ from pathlib import Path
 
 from gemini_webapi.types.image import GeneratedImage
 
-from gemini_webapi_proxy.client.pool import get_client, registry
+from gemini_webapi_proxy.client.pool import pool, registry
 from gemini_webapi_proxy.config import Settings
 from gemini_webapi_proxy.downloaders.chain import generated_image_to_b64
 from gemini_webapi_proxy.downloaders.image_export import sanitize_gemini_client_cookies
@@ -29,36 +29,6 @@ QUOTA_PATTERNS = (
     r"重置",
     r"使用情况",
 )
-
-
-_MODELS_REFRESH_INTERVAL = 60.0
-_models_refreshed_at = 0.0
-
-
-async def _resolve_runtime(client, model_id: str):
-    """Resolve a model, re-reading the account's model list once a minute on a miss.
-
-    gemini-webapi builds its model list only in ``init()``.  Models the account cannot
-    use at that moment (exhausted quota) are missing from it and would stay missing
-    until a restart, even after the quota resets.
-    """
-    global _models_refreshed_at
-    runtime = registry.resolve_runtime(model_id)
-    # A fuzzy match (gemini-flash -> gemini-flash-lite) is not the model asked for.
-    exact = model_id in registry.entry_ids()
-    if exact and not isinstance(runtime, str):
-        return runtime
-    now = time.monotonic()
-    refresh = getattr(client, "_fetch_user_status", None)
-    if refresh is None or now - _models_refreshed_at < _MODELS_REFRESH_INTERVAL:
-        return runtime
-    _models_refreshed_at = now
-    try:
-        await refresh()
-    except Exception:  # best effort: keep the old list
-        return runtime
-    registry.sync_from_client(client.list_models())
-    return registry.resolve_runtime(model_id)
 
 
 def _quota_message(text: str) -> bool:
@@ -123,14 +93,13 @@ async def create_chat_completion(
     model: str,
     messages: list[ChatMessage],
 ) -> ChatCompletionResponse:
-    client = await get_client(settings)
     resolved = registry.resolve_id(model)
-    runtime = await _resolve_runtime(client, resolved)
     prompt, msg_refs = _messages_to_prompt_and_refs(messages)
     ref_paths: list[Path] = []
     if msg_refs:
         ref_paths = await materialize_reference_images(msg_refs, proxy=settings.http_proxy)
-    try:
+
+    async def call(client, runtime) -> ChatCompletionResponse:
         output = await asyncio.wait_for(
             client.generate_content(
                 prompt,
@@ -141,10 +110,7 @@ async def create_chat_completion(
         )
         text = (output.text or "").strip()
         images = output.images or []
-        content: str | list[dict] = text
-        if images and not text:
-            content = text
-        payload: dict = {"role": "assistant", "content": content}
+        payload: dict = {"role": "assistant", "content": text}
         if images:
             payload["images"] = [{"url": img.url} for img in images]
         if _quota_message(text) and not images:
@@ -155,13 +121,20 @@ async def create_chat_completion(
             model=resolved,
             choices=[ChatCompletionChoice(message=payload)],
         )
+
+    try:
+        return await pool.run(settings, resolved, call)
     finally:
-        if ref_paths:
-            tmp_root = ref_paths[0].parent
-            if tmp_root.name.startswith("gemini-ref-"):
-                for p in ref_paths:
-                    p.unlink(missing_ok=True)
-                tmp_root.rmdir()
+        _remove_refs(ref_paths)
+
+
+def _remove_refs(ref_paths: list[Path]) -> None:
+    if ref_paths:
+        tmp_root = ref_paths[0].parent
+        if tmp_root.name.startswith("gemini-ref-"):
+            for p in ref_paths:
+                p.unlink(missing_ok=True)
+            tmp_root.rmdir()
 
 
 async def create_image_generation(
@@ -175,26 +148,24 @@ async def create_image_generation(
     reference_images: list[str] | None = None,
     edit: bool = False,
 ) -> ImageGenerationResponse:
-    client = await get_client(settings)
     target = registry.pick_image_model(model)
-    runtime = await _resolve_runtime(client, target)
     refs = normalize_image_field(reference_images)
     ref_paths: list[Path] = []
     if refs:
         ref_paths = await materialize_reference_images(refs, proxy=settings.http_proxy)
+    # Collected across accounts: when one runs out after the first image, the next
+    # account only makes the rest.
     data: list[ImageGenerationData] = []
-    attempts = 0
-    max_attempts = max(n, 1) + 2
-    try:
+    full_prompt = _image_prompt(prompt, size, has_reference=bool(ref_paths), edit=edit)
+
+    async def call(client, runtime) -> None:
+        attempts = 0
+        max_attempts = max(n, 1) + 2
         while len(data) < n and attempts < max_attempts:
             attempts += 1
             sanitize_gemini_client_cookies(client)
             output = await asyncio.wait_for(
-                client.generate_content(
-                    _image_prompt(prompt, size, has_reference=bool(ref_paths), edit=edit),
-                    files=ref_paths or None,
-                    model=runtime,
-                ),
+                client.generate_content(full_prompt, files=ref_paths or None, model=runtime),
                 timeout=settings.image_timeout,
             )
             text = (output.text or "").strip()
@@ -219,11 +190,9 @@ async def create_image_generation(
                         b64_json=await _image_to_b64(img, settings, client),
                     )
                 )
+
+    try:
+        await pool.run(settings, target, call)
     finally:
-        if ref_paths:
-            tmp_root = ref_paths[0].parent
-            if tmp_root.name.startswith("gemini-ref-"):
-                for p in ref_paths:
-                    p.unlink(missing_ok=True)
-                tmp_root.rmdir()
+        _remove_refs(ref_paths)
     return ImageGenerationResponse(created=int(time.time()), data=data)

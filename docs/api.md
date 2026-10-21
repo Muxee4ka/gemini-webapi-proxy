@@ -215,7 +215,7 @@ OpenAI-style body: `{"error": {"message": "…", "type": "api_error"}}`.
 POST /images/generations or /images/edits
   → gemini-webapi generate_content (cookies + optional files = reference images)
   → full-size RPC URL → CDN redirect chain
-  → downloader chain (Playwright → httpx → curl_cffi → library save)
+  → downloader chain (httpx → library save)
   → b64_json
 ```
 

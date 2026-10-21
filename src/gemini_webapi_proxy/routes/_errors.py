@@ -5,13 +5,14 @@ from __future__ import annotations
 import asyncio
 
 from fastapi.responses import JSONResponse
-from gemini_webapi.exceptions import AuthError
+from gemini_webapi.exceptions import AuthError, TemporarilyBlockedError, UsageLimitExceededError
 
 from gemini_webapi_proxy.client.pool import invalidate_client
 from gemini_webapi_proxy.config import Settings
 from gemini_webapi_proxy.errors import (
     CookieExpiredError,
     ImageExportError,
+    NoAccountError,
     QuotaExceededError,
     UpstreamRefusalError,
 )
@@ -49,8 +50,12 @@ async def map_api_error(exc: Exception, settings: Settings) -> JSONResponse:
         return error_json(str(exc), exc.http_status)
     if isinstance(exc, ImageExportError):
         return error_json(str(exc), exc.http_status)
-    if isinstance(exc, QuotaExceededError):
-        return error_json(f"Gemini usage limit reached: {exc}", exc.http_status)
+    if isinstance(exc, (QuotaExceededError, UsageLimitExceededError)):
+        return error_json(f"Gemini usage limit reached: {exc}", 429)
+    if isinstance(exc, NoAccountError):
+        return error_json(str(exc), exc.http_status)
+    if isinstance(exc, TemporarilyBlockedError):
+        return error_json(f"Google temporarily blocked this server's IP: {exc}", 503)
     if isinstance(exc, UpstreamRefusalError):
         return error_json(
             _with_reauth_hint(f"Upstream refused request: {exc}"),

@@ -22,7 +22,6 @@ export HTTP_PROXY="${HTTP_PROXY:-}"
 if [[ ! -d .venv ]]; then
   python3 -m venv .venv
   .venv/bin/pip install -e ".[browser-cookie]"
-  .venv/bin/playwright install chromium
 fi
 
 exec .venv/bin/gemini-webapi-proxy --host 0.0.0.0 --port "$PORT"

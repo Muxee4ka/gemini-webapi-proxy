@@ -241,10 +241,17 @@ class ModelRegistry:
                 if target_id not in entry.aliases:
                     entry.aliases = [*entry.aliases, target_id]
 
-    def resolve_runtime(self, model_id: str) -> AvailableModel | str:
+    def resolve_runtime(
+        self, model_id: str, models: list[AvailableModel] | None = None
+    ) -> AvailableModel | str:
+        """The runtime model for ``model_id``: of one account when ``models`` is given
+        (its ``list_models()``), else of the client last synced."""
+        runtime = self._runtime
+        if models is not None:
+            runtime = {m.model_name: m for m in models if m.is_available and m.model_name}
         key = self.resolve_id(model_id)
-        if key in self._runtime:
-            return self._runtime[key]
+        if key in runtime:
+            return runtime[key]
         # Stable image aliases (gemini-2.5-flash-image, etc.) live in
         # our registry but not in gemini-webapi's runtime.  Fall back
         # to the first alias in the entry's alias list — that's the
@@ -253,8 +260,8 @@ class ModelRegistry:
         entry = self._entries.get(key)
         if entry and entry.aliases:
             for alias in entry.aliases:
-                if alias in self._runtime:
-                    return self._runtime[alias]
+                if alias in runtime:
+                    return runtime[alias]
         return key
 
     def resolve_id(self, model_id: str) -> str:

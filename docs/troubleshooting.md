@@ -26,7 +26,7 @@ bash scripts/e2e-image.sh
 | 401 / `signed out` / `AuthError` | Cookie expired | Re-login in Safari at [gemini.google.com](https://gemini.google.com), then `.venv/bin/python scripts/sync_runtime_env.py && docker compose restart` |
 | 500 when generating several images concurrently | Cookie refresh storm | Set your client's image concurrency to **1–2** and restart the proxy |
 | 502 with `Multiple cookies exist with name=NID` / `COMPASS` | Cross-domain cookie duplicates (`.com` vs `.com.hk`) | Already filtered; if it persists, `docker compose restart` |
-| 502 with no b64 in the response | Playwright download failed for all five strategies | `playwright install chromium` on the host; for Docker, `docker compose build --no-cache && docker compose up -d` |
+| 502 with no b64 in the response | Every downloader failed | The error message lists each strategy's reason; a logged-out session (`GET /admin/quota` → `UNAUTHENTICATED`) is the usual cause |
 | `Upstream refused request: I cannot fulfill…` → HTTP 403 | Gemini's safety/policy filter | This is a *real* answer from Gemini, not a bug. Try a different prompt or model. |
 | `Unknown model name: gemini-2.5-pro-image` despite asking for `gemini-3-pro` | **Fixed in 0.1.0** — old image had a routing bug | `docker compose pull && docker compose up -d --force-recreate` |
 | `docker ps` shows `unhealthy` but `/health` returns ok | Old healthcheck used `curl`; the image now uses `urllib` | Pull the new image: `docker compose pull && docker compose up -d --force-recreate` |

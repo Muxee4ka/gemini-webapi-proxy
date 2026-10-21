@@ -13,37 +13,170 @@ stays off Gemini until the next sign-in.
 
 from __future__ import annotations
 
+import itertools
+import json
 import logging
+from typing import Any
+
+import httpx
+import websockets
 
 from gemini_webapi_proxy.config import get_settings
 from gemini_webapi_proxy.cookies.base import BaseCookieSource, CookieBundle, register_source
 
 logger = logging.getLogger(__name__)
 
+_GEMINI_HOST = "gemini.google.com"
+
+
+class _Cdp:
+    """Bare DevTools protocol over the browser websocket: commands only, events dropped."""
+
+    def __init__(self, ws: Any) -> None:
+        self._ws = ws
+        self._ids = itertools.count(1)
+
+    async def send(self, method: str, params: dict | None = None, session: str | None = None):
+        msg_id = next(self._ids)
+        msg: dict[str, Any] = {"id": msg_id, "method": method, "params": params or {}}
+        if session:
+            msg["sessionId"] = session
+        await self._ws.send(json.dumps(msg))
+        while True:
+            reply = json.loads(await self._ws.recv())
+            if reply.get("id") != msg_id:
+                continue
+            if "error" in reply:
+                raise RuntimeError(f"CDP {method}: {reply['error'].get('message')}")
+            return reply.get("result", {})
+
+
+async def _browser_ws_url(cdp_url: str) -> str:
+    if cdp_url.startswith(("ws://", "wss://")):
+        return cdp_url
+    async with httpx.AsyncClient(timeout=30, trust_env=False) as http:
+        resp = await http.get(cdp_url.rstrip("/") + "/json/version")
+        resp.raise_for_status()
+        return resp.json()["webSocketDebuggerUrl"]
+
+
+def _sent_to_gemini(cookie: dict) -> bool:
+    """Whether the browser would send ``cookie`` with a request to https://gemini.google.com/."""
+    domain = cookie.get("domain", "")
+    if domain.startswith("."):
+        host_ok = domain[1:] == _GEMINI_HOST or _GEMINI_HOST.endswith(domain)
+    else:
+        host_ok = domain == _GEMINI_HOST
+    return host_ok and cookie.get("path", "/") == "/"
+
+
+async def _gemini_jar(cdp: _Cdp) -> dict[str, str]:
+    cookies = [c for c in (await cdp.send("Storage.getCookies"))["cookies"] if _sent_to_gemini(c)]
+    # A host-only cookie wins over a same-named one set for .google.com.
+    cookies.sort(key=lambda c: not c["domain"].startswith("."))
+    return {c["name"]: c["value"] for c in cookies}
+
+
+async def _pages(cdp: _Cdp) -> list[dict]:
+    return [t for t in (await cdp.send("Target.getTargets"))["targetInfos"] if t["type"] == "page"]
+
+
+async def _on_page(cdp: _Cdp, target: dict, method: str, params: dict) -> dict:
+    attached = await cdp.send(
+        "Target.attachToTarget", {"targetId": target["targetId"], "flatten": True}
+    )
+    session = attached["sessionId"]
+    try:
+        return await cdp.send(method, params, session)
+    finally:
+        await cdp.send("Target.detachFromTarget", {"sessionId": session})
+
+
+async def _park_google_tabs(cdp: _Cdp) -> None:
+    for target in await _pages(cdp):
+        if "google.com" not in target["url"]:
+            continue
+        try:
+            await _on_page(cdp, target, "Page.navigate", {"url": "about:blank"})
+        except Exception as exc:
+            logger.warning("CDP: could not leave %s: %s", target["url"], exc)
+
+
+_EMAIL_JS = r"""(() => {
+  for (const el of document.querySelectorAll('[aria-label]')) {
+    const m = el.getAttribute('aria-label').match(/[\w.+-]+@[\w-]+(\.[\w-]+)+/);
+    if (m) return m[0];
+  }
+  return null;
+})()"""
+
+
+async def _signed_in_email(cdp: _Cdp) -> str | None:
+    """The account shown on an open Gemini page (its avatar button names it)."""
+    for target in await _pages(cdp):
+        if _GEMINI_HOST not in target["url"]:
+            continue
+        try:
+            result = await _on_page(
+                cdp, target, "Runtime.evaluate", {"expression": _EMAIL_JS, "returnByValue": True}
+            )
+        except Exception:
+            continue
+        value = (result.get("result") or {}).get("value")
+        if isinstance(value, str):
+            return value
+    return None
+
 
 async def read_cdp_cookies(cdp_url: str) -> dict[str, str]:
     """Return the browser's Gemini cookies and park its Google tabs on about:blank."""
-    from playwright.async_api import async_playwright
-
-    pw = await async_playwright().start()
-    try:
-        browser = await pw.chromium.connect_over_cdp(cdp_url, timeout=30_000)
-        if not browser.contexts:
-            return {}
-        ctx = browser.contexts[0]
-        cookies = await ctx.cookies(["https://gemini.google.com"])
-        jar = {c["name"]: c["value"] for c in cookies}
+    async with websockets.connect(await _browser_ws_url(cdp_url), max_size=None) as ws:
+        cdp = _Cdp(ws)
+        jar = await _gemini_jar(cdp)
         if "__Secure-1PSID" in jar:
-            for page in ctx.pages:
-                if "google.com" in page.url:
-                    try:
-                        await page.goto("about:blank")
-                    except Exception as exc:
-                        logger.warning("CDP: could not leave %s: %s", page.url, exc)
+            await _park_google_tabs(cdp)
+        # Closing the socket only drops the connection; the browser keeps running.
         return jar
-    finally:
-        # Stopping the driver drops the CDP connection; the browser keeps running.
-        await pw.stop()
+
+
+SIGN_IN_URL = (
+    "https://accounts.google.com/ServiceLogin?continue=https%3A%2F%2Fgemini.google.com%2Fapp"
+)
+
+
+async def open_sign_in(cdp_url: str) -> None:
+    """Start a sign-in from a clean browser: no cookies, one tab on Google's sign-in."""
+    async with websockets.connect(await _browser_ws_url(cdp_url), max_size=None) as ws:
+        cdp = _Cdp(ws)
+        await cdp.send("Storage.clearCookies")
+        pages = await _pages(cdp)
+        if not pages:
+            await cdp.send("Target.createTarget", {"url": SIGN_IN_URL})
+            return
+        for extra in pages[1:]:
+            await cdp.send("Target.closeTarget", {"targetId": extra["targetId"]})
+        await _on_page(cdp, pages[0], "Page.navigate", {"url": SIGN_IN_URL})
+        await cdp.send("Target.activateTarget", {"targetId": pages[0]["targetId"]})
+
+
+async def take_session(cdp_url: str) -> tuple[dict[str, str], str | None]:
+    """Hand the signed-in session over to the proxy: the browser keeps no copy.
+
+    A Chrome that still holds the cookies keeps talking to Google in the background
+    (account checks, cookie rotation) even with no Google tab open, and a session
+    rotated by two clients gets revoked.  So the jar is read, then every cookie in the
+    browser is cleared and its tabs leave Google.  Clearing local cookies is not a
+    sign-out: the session stays valid for the proxy.
+    """
+    async with websockets.connect(await _browser_ws_url(cdp_url), max_size=None) as ws:
+        cdp = _Cdp(ws)
+        jar = await _gemini_jar(cdp)
+        if "__Secure-1PSID" not in jar:
+            return jar, None
+        email = await _signed_in_email(cdp)
+        await _park_google_tabs(cdp)
+        await cdp.send("Storage.clearCookies")
+        return jar, email
 
 
 @register_source

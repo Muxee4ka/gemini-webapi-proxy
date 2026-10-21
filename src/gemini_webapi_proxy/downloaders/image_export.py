@@ -4,7 +4,7 @@ THIS MODULE IS A TRANSITIONAL SHIM. In phase 1.F the inline download chain
 lives in :mod:`gemini_webapi_proxy.downloaders.chain` and each individual
 strategy becomes a :class:`BaseDownloader` subclass.
 
-Only the small helpers used by the httpx/playwright downloaders stay here
+Only the small helpers used by the httpx downloaders stay here
 for now: cookie sanitization, request headers, CDN proxy decision, and
 ``=d-I?alr=yes`` candidate generation.
 """

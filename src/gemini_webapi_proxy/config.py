@@ -63,6 +63,10 @@ class Settings(BaseSettings):
     # required.  When empty (default), authentication is bypassed for
     # backward compatibility with local single-user setups.
     api_key: str | None = None
+    # Password of the admin UI (/admin/ui); falls back to api_key when empty.
+    admin_password: str | None = None
+    # noVNC (websockify) of the sign-in browser, proxied by the admin UI.
+    vnc_url: str = "http://127.0.0.1:6080"
 
     # -- Cookie source ----------------------------------------------------
     cookie_source: Literal["browser", "env", "file", "cdp"] = "browser"
@@ -85,6 +89,11 @@ class Settings(BaseSettings):
     video_timeout: float = 900.0
     video_keep_hours: float = 24.0
     init_timeout: float = 120.0
+    # An account whose quota ran out is skipped until the reset time Gemini reported,
+    # or for this long when it did not report one.
+    quota_cooldown: float = 1800.0
+    # Video limits are not reported at all; Gemini resets them daily.
+    video_cooldown: float = 6 * 3600.0
     probe_on_start: bool = False
     probe_models: bool = True
     enable_stream: bool = False  # not implemented yet; see roadmap
@@ -111,11 +120,8 @@ class Settings(BaseSettings):
     # -- Downloader chain -------------------------------------------------
     downloader_chain: list[str] = Field(
         default_factory=lambda: [
-            "playwright-rpc",
-            "playwright-preview",
             "httpx-rpc",
             "httpx-preview",
-            "library-rpc",
             "library-save",
         ]
     )
@@ -149,7 +155,7 @@ class Settings(BaseSettings):
             return None
         return v
 
-    @field_validator("api_key", mode="before")
+    @field_validator("api_key", "admin_password", mode="before")
     @classmethod
     def _empty_api_key_to_none(cls, v: Any) -> Any:
         if isinstance(v, str) and not v.strip():

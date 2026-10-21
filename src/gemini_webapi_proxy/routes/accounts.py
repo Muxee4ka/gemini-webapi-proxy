@@ -1,0 +1,266 @@
+"""Account management for the admin UI (``/admin/ui``).
+
+* ``GET  /admin/accounts`` — every account with its state, models, limits and cooldowns
+* ``POST /admin/accounts`` — add an account (``{"name": ...}``), then sign in to it
+* ``PATCH / DELETE /admin/accounts/{id}`` — rename, enable/disable, reorder, remove
+* ``POST /admin/accounts/{id}/login/start|finish|cancel`` — sign in through the
+  server's browser (shown in the UI over noVNC); finish hands the session to the proxy
+* ``POST /admin/accounts/{id}/cookies`` — or paste a cookie string instead
+* ``POST /admin/accounts/{id}/check`` — re-initialise the client (talks to Google)
+* ``DELETE /admin/accounts/{id}/cooldowns`` — forget the limits noted for it
+
+Reading the list never calls Google: the limits are what the library saw last.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import time
+from importlib import resources
+
+import httpx
+import websockets
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, WebSocket
+from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
+
+from gemini_webapi_proxy.auth import (
+    SESSION_COOKIE,
+    check_admin_password,
+    new_session_cookie,
+    require_admin,
+    session_valid,
+)
+from gemini_webapi_proxy.client import pool as pool_module
+from gemini_webapi_proxy.client.pool import pool
+from gemini_webapi_proxy.config import get_settings
+from gemini_webapi_proxy.cookies.cdp import open_sign_in, take_session
+from gemini_webapi_proxy.utils.cookies import parse_cookie_string
+
+log = logging.getLogger(__name__)
+
+ui_router = APIRouter(prefix="/admin", tags=["admin-ui"])
+router = APIRouter(prefix="/admin", tags=["admin-ui"], dependencies=[Depends(require_admin)])
+
+
+# ---- UI page and session ----------------------------------------------------
+@ui_router.get("/ui", response_class=HTMLResponse, include_in_schema=False)
+async def ui_page() -> HTMLResponse:
+    html = resources.files("gemini_webapi_proxy").joinpath("ui/index.html").read_text()
+    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+
+
+class SessionIn(BaseModel):
+    password: str
+
+
+@ui_router.post("/session")
+async def sign_in(body: SessionIn, request: Request, response: Response) -> dict:
+    if not check_admin_password(body.password):
+        raise HTTPException(status_code=403, detail="Wrong password")
+    value, max_age = new_session_cookie()
+    response.set_cookie(
+        SESSION_COOKIE,
+        value,
+        max_age=max_age,
+        httponly=True,
+        samesite="strict",
+        secure=request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https",
+        path="/admin",
+    )
+    return {"ok": True}
+
+
+@ui_router.delete("/session")
+async def sign_out(response: Response) -> dict:
+    response.delete_cookie(SESSION_COOKIE, path="/admin")
+    return {"ok": True}
+
+
+# ---- Accounts ---------------------------------------------------------------
+def _store():
+    return pool.configure(get_settings())
+
+
+def _slot(account_id: str):
+    _store()
+    slot = pool.slots.get(account_id)
+    if slot is None:
+        raise HTTPException(status_code=404, detail=f"No account {account_id!r}")
+    return slot
+
+
+@router.get("/accounts")
+async def list_accounts() -> dict:
+    _store()
+    return {
+        "accounts": [s.report() for s in pool.ordered()],
+        "signing_in": pool_module.current_sign_in(),
+    }
+
+
+class AccountIn(BaseModel):
+    name: str
+
+
+@router.post("/accounts")
+async def add_account(body: AccountIn) -> dict:
+    account = _store().add(body.name)
+    pool.sync()
+    return pool.slots[account.id].report()
+
+
+class AccountPatch(BaseModel):
+    name: str | None = None
+    enabled: bool | None = None
+    priority: int | None = None
+
+
+@router.patch("/accounts/{account_id}")
+async def update_account(account_id: str, body: AccountPatch) -> dict:
+    slot = _slot(account_id)
+    changes = body.model_dump(exclude_none=True)
+    if changes:
+        _store().update(account_id, **changes)
+        pool.sync()
+    if changes.get("enabled") is False:
+        await slot.close()
+    return slot.report()
+
+
+@router.delete("/accounts/{account_id}")
+async def delete_account(account_id: str) -> dict:
+    slot = _slot(account_id)
+    await slot.close()
+    _store().remove(account_id)
+    pool.sync()
+    return {"ok": True}
+
+
+@router.post("/accounts/{account_id}/check")
+async def check_account(account_id: str) -> dict:
+    slot = _slot(account_id)
+    await pool.drop(account_id)
+    await slot.ensure(get_settings())
+    return slot.report()
+
+
+@router.delete("/accounts/{account_id}/cooldowns")
+async def clear_cooldowns(account_id: str) -> dict:
+    slot = _slot(account_id)
+    slot.cooldowns.clear()
+    return slot.report()
+
+
+class CookiesIn(BaseModel):
+    cookies: str  # "name=value; name2=value2" as copied from a browser
+
+
+async def _use_jar(account_id: str, jar: dict[str, str], email: str | None) -> dict:
+    if "__Secure-1PSID" not in jar:
+        raise HTTPException(status_code=400, detail="No __Secure-1PSID: not signed in to Google")
+    slot = _slot(account_id)
+    _store().set_cookies(account_id, jar, email)
+    pool.sync()
+    await pool.drop(account_id)
+    await slot.ensure(get_settings())
+    return slot.report()
+
+
+@router.post("/accounts/{account_id}/cookies")
+async def paste_cookies(account_id: str, body: CookiesIn) -> dict:
+    return await _use_jar(account_id, parse_cookie_string(body.cookies), None)
+
+
+# ---- Sign-in through the server's browser ----------------------------------
+@router.post("/accounts/{account_id}/login/start")
+async def login_start(account_id: str) -> dict:
+    _slot(account_id)
+    busy = pool_module.current_sign_in()
+    if busy not in (None, account_id):
+        raise HTTPException(status_code=409, detail=f"Sign-in to {busy!r} is in progress")
+    try:
+        await open_sign_in(get_settings().cdp_url)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Sign-in browser: {exc}") from exc
+    pool_module.signing_in, pool_module.signing_in_since = account_id, time.monotonic()
+    return {
+        "ok": True,
+        "vnc": "/admin/vnc/vnc.html?path=admin/vnc/websockify&autoconnect=true&resize=scale&reconnect=true",
+    }
+
+
+@router.post("/accounts/{account_id}/login/finish")
+async def login_finish(account_id: str) -> dict:
+    _slot(account_id)
+    try:
+        jar, email = await take_session(get_settings().cdp_url)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Sign-in browser: {exc}") from exc
+    if "__Secure-1PSID" not in jar:
+        raise HTTPException(status_code=400, detail="Not signed in yet: finish the sign-in first")
+    pool_module.signing_in = None
+    log.info("account %s: signed in through the browser (%s)", account_id, email or "?")
+    return await _use_jar(account_id, jar, email)
+
+
+@router.post("/accounts/{account_id}/login/cancel")
+async def login_cancel(account_id: str) -> dict:
+    pool_module.signing_in = None
+    try:
+        await take_session(get_settings().cdp_url)  # just wipes the browser
+    except Exception as exc:
+        log.warning("sign-in browser: %s", exc)
+    return {"ok": True}
+
+
+# ---- noVNC of the sign-in browser, behind the admin session ----------------
+@router.get("/vnc/{path:path}", include_in_schema=False)
+async def vnc_files(path: str) -> Response:
+    url = f"{get_settings().vnc_url.rstrip('/')}/{path}"
+    async with httpx.AsyncClient(timeout=30, trust_env=False) as http:
+        upstream = await http.get(url)
+    return Response(
+        upstream.content,
+        status_code=upstream.status_code,
+        media_type=upstream.headers.get("content-type"),
+    )
+
+
+@ui_router.websocket("/vnc/websockify")
+async def vnc_socket(ws: WebSocket) -> None:
+    if not session_valid(ws.cookies.get(SESSION_COOKIE)):
+        await ws.close(code=4401)
+        return
+    requested = [p.strip() for p in (ws.headers.get("sec-websocket-protocol") or "").split(",")]
+    subprotocol = "binary" if "binary" in requested else None
+    target = get_settings().vnc_url.replace("http", "ws", 1).rstrip("/") + "/websockify"
+    async with websockets.connect(
+        target, subprotocols=[subprotocol] if subprotocol else None, max_size=None
+    ) as upstream:
+        await ws.accept(subprotocol=subprotocol)
+
+        async def to_vnc() -> None:
+            while True:
+                msg = await ws.receive()
+                if msg["type"] == "websocket.disconnect":
+                    return
+                data = msg.get("bytes") if msg.get("bytes") is not None else msg.get("text")
+                await upstream.send(data)
+
+        async def to_browser() -> None:
+            async for data in upstream:
+                if isinstance(data, bytes):
+                    await ws.send_bytes(data)
+                else:
+                    await ws.send_text(data)
+
+        tasks = [asyncio.create_task(to_vnc()), asyncio.create_task(to_browser())]
+        _, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        for task in pending:
+            task.cancel()
+    try:
+        await ws.close()
+    except RuntimeError:
+        pass

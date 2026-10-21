@@ -104,8 +104,9 @@ client — without copy-pasting prompts into the web UI.
 - ✏️ **Image edits** — `POST /openai/v1/images/edits`: upload an image, describe the change
 - 🎬 **Video generation (Veo)** — OpenAI Videos API shape: `POST /openai/v1/videos` → job → mp4
 - 🍪 **Pluggable cookie sources** — desktop browser (Safari/Chrome/…), env vars, Netscape cookie file
+- 👥 **Several accounts + admin UI** — `/admin/ui`: state and limits per account, sign-in through the server's browser, automatic switch when an account runs out ([docs/accounts.md](docs/accounts.md))
 - 🐳 **One-command Docker** — `docker compose up -d`, auto-restart, host network bridge for the local proxy
-- 🔌 **Multi-fallback image download** — Playwright Chromium → httpx → curl_cffi → library save
+- 🔌 **Multi-fallback image download** — httpx (RPC / preview URL) → gemini-webapi library save; no browser in the image
 - 🛡 **Upstream refusal detection** — Gemini "I cannot fulfill…" answers become errors (403 images / 502 chat), exhausted quota → 429
 - 🛠 **Optional API key** — `GOP_API_KEY=...` enables Bearer auth; empty = off (local-only default)
 - 📋 **Live model list** — the account's models (`gemini-flash`, `gemini-pro`, `gemini-argon`, `gemini-flash-lite`) plus stable `gemini-2.5-*-image` aliases via `/openai/v1/models`
@@ -134,7 +135,6 @@ git clone https://github.com/Lutiancheng1/gemini-webapi-proxy
 cd gemini-webapi-proxy
 python3 -m venv .venv
 .venv/bin/pip install -e ".[browser-cookie,dev]"
-.venv/bin/playwright install chromium
 ./start.sh
 ```
 
@@ -309,7 +309,7 @@ detailed semantics.
 │  └─────────────┘   └──────────────────┘         │
 │                                                 │
 │  ┌────────────────────────── Image download ──┐ │
-│  │ Playwright Chromium  →  httpx  →  curl_cffi │ │
+│  │ httpx (RPC → preview URL)                  │ │
 │  │ →  gemini-webapi library save (last resort)│ │
 │  └────────────────────────────────────────────┘ │
 └────────────────────────────────────────────────┘
@@ -361,7 +361,6 @@ git clone https://github.com/Lutiancheng1/gemini-webapi-proxy
 cd gemini-webapi-proxy
 python3 -m venv .venv
 .venv/bin/pip install -e ".[browser-cookie,dev]"
-.venv/bin/playwright install chromium
 .venv/bin/pytest tests/ -v
 .venv/bin/ruff check
 .venv/bin/ruff format
@@ -383,7 +382,7 @@ The short version:
 | 401 / `AuthError` from upstream | cookie expired | re-login in Safari, re-run `scripts/sync_runtime_env.py`, `docker compose restart` |
 | 403 `"I cannot fulfill..."` | upstream safety filter | try a different prompt, or check the model list |
 | 502 with `Multiple cookies exist` | `.com` vs `.com.hk` duplicates | already auto-filtered; if not, `docker compose restart` |
-| 502 (b64 download) | Playwright missing | `playwright install chromium` (host) or rebuild Docker image |
+| 502 (b64 download) | every downloader failed | check the session (`GET /admin/quota`); the error lists each strategy's reason |
 | Upstream `Unknown model name: gemini-2.5-pro-image` against a `gemini-3-pro` request | fixed in 0.1.0 — re-pull the image and restart | `docker compose pull && docker compose up -d` |
 
 Full troubleshooting matrix: [docs/troubleshooting.md](docs/troubleshooting.md).

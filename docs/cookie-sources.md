@@ -36,7 +36,6 @@ Pick a specific browser with `GOP_BROWSER=safari|chrome|edge|brave|chromium`.
 ```bash
 # macOS — first time only
 pip install "gemini-webapi-proxy[browser-cookie]"
-.venv/bin/playwright install chromium   # only if you'll generate images
 ./start.sh
 ```
 
@@ -123,6 +122,10 @@ cd integrations/cdp-browser
 mkdir -p profile && sudo chown 1000:1000 profile   # the browser runs as uid 1000
 docker compose up -d --build
 ```
+
+With several accounts, or to sign in from a web page, use the admin UI instead of the
+steps below: it shows this browser's screen and hands the session over cleanly — see
+[accounts.md](accounts.md).
 
 Sign in through an SSH tunnel from your desktop:
 
