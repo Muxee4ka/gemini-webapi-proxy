@@ -105,6 +105,21 @@ class Settings(BaseSettings):
     probe_models: bool = True
     enable_stream: bool = False  # not implemented yet; see roadmap
 
+    # -- Build and updates ------------------------------------------------
+    # Set by the Docker build (args of the same name); empty when run from source.
+    build_commit: str = ""
+    build_branch: str = ""
+    build_date: str = ""
+    # GitHub is asked what is newer at most this often (0 = never, only the UI button).
+    update_check_hours: float = 6.0
+    update_repo: str = "Muxee4ka/gemini-webapi-proxy"
+    # Branch to follow; empty = the branch the image was built from, else "main".
+    update_branch: str = ""
+    upstream_repo: str = "Lutiancheng1/gemini-webapi-proxy"
+    library_repo: str = "HanaokaYuzu/Gemini-API"
+    # Only needed for a private repo or to lift GitHub's 60 requests/hour per IP.
+    github_token: str | None = None
+
     # -- Data -------------------------------------------------------------
     data_dir: Path = DEFAULT_DATA_DIR
     registry_file: str = DEFAULT_REGISTRY_FILE

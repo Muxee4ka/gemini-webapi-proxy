@@ -41,6 +41,15 @@ RUN export http_proxy="$GOP_BUILD_HTTP_PROXY" https_proxy="$GOP_BUILD_HTTP_PROXY
 
 RUN mkdir -p /app/data
 WORKDIR /app
+
+# Shown in the admin UI and used to tell what is newer on GitHub; last, so a new commit
+# only invalidates this layer. scripts/install.sh passes them from git.
+ARG GOP_BUILD_COMMIT=""
+ARG GOP_BUILD_BRANCH=""
+ARG GOP_BUILD_DATE=""
+ENV GOP_BUILD_COMMIT=$GOP_BUILD_COMMIT \
+    GOP_BUILD_BRANCH=$GOP_BUILD_BRANCH \
+    GOP_BUILD_DATE=$GOP_BUILD_DATE
 VOLUME ["/app/data"]
 
 EXPOSE 4982

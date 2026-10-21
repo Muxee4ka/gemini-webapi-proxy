@@ -11,6 +11,9 @@ services:
       network: host          # apt + pip during the build
       args:
         GOP_BUILD_HTTP_PROXY: ${GOP_BUILD_HTTP_PROXY:-}
+        GOP_BUILD_COMMIT: ${GOP_BUILD_COMMIT:-}
+        GOP_BUILD_BRANCH: ${GOP_BUILD_BRANCH:-}
+        GOP_BUILD_DATE: ${GOP_BUILD_DATE:-}
     image: gemini-webapi-proxy:local
     container_name: gemini-webapi-proxy
     network_mode: host

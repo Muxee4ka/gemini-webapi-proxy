@@ -561,6 +561,10 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
         await bot.start(settings)
     except Exception as exc:  # the proxy works without its bot
         logger.warning("telegram bot: %s", exc)
+    from gemini_webapi_proxy import updates
+
+    updates.start(settings)
     yield
+    await updates.stop()
     await bot.stop()
     await close_client()

@@ -53,6 +53,7 @@ aside { border-right: 1px solid var(--line); background: var(--card); padding: 1
   height: 100vh; display: flex; flex-direction: column; gap: 4px; }
 .brand { font-weight: 700; font-size: 15px; padding: 4px 10px 14px; display: flex; align-items: center; gap: 8px; }
 .brand svg { width: 20px; height: 20px; }
+.brand .ver { margin-left: auto; font-size: 11.5px; font-weight: 500; color: var(--muted); white-space: nowrap; }
 nav a { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; color: var(--fg2);
   text-decoration: none; }
 nav a svg { width: 16px; height: 16px; flex: none; }
@@ -73,6 +74,12 @@ main { padding: 24px 28px 60px; max-width: 1240px; width: 100%; }
   min-width: 0; }
 .card h2 { font-size: 14px; margin: 0 0 12px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .card.off { opacity: .6; }
+.upd { display: grid; gap: 14px; }
+.upd section + section { border-top: 1px solid var(--line); padding-top: 12px; }
+.upd h3 { font-size: 13px; margin: 0 0 6px; display: flex; align-items: center; gap: 8px; }
+.commits { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; font-size: 12.5px; }
+.commits li { display: flex; gap: 10px; min-width: 0; }
+.commits li > :last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .muted { color: var(--muted); } .fg2 { color: var(--fg2); } .small { font-size: 12.5px; }
 .chip { display: inline-flex; align-items: center; gap: 4px; background: var(--chip); border-radius: 6px; padding: 1px 8px;
@@ -237,7 +244,7 @@ dialog h3 { margin: 0 0 8px; font-size: 15px; }
 
 <div class="shell" id="app" hidden>
   <aside>
-    <div class="brand"><svg viewBox="0 0 24 24" fill="none"><path d="M12 2c.6 5.4 4.6 9.4 10 10-5.4.6-9.4 4.6-10 10-.6-5.4-4.6-9.4-10-10 5.4-.6 9.4-4.6 10-10Z" fill="var(--accent)"/></svg>Gemini Proxy</div>
+    <div class="brand"><svg viewBox="0 0 24 24" fill="none"><path d="M12 2c.6 5.4 4.6 9.4 10 10-5.4.6-9.4 4.6-10 10-.6-5.4-4.6-9.4-10-10 5.4-.6 9.4-4.6 10-10Z" fill="var(--accent)"/></svg>Gemini Proxy<span class="ver" id="brand-ver"></span></div>
     <nav id="nav"></nav>
     <div class="aside-foot">
       <button class="ghost sm" id="theme-btn" title="Тема">◐</button>
@@ -315,6 +322,7 @@ const ACC_STATE = {
 const ENDPOINT = { chat: "чат", image: "картинка", edit: "правка", video: "видео", "video-job": "видео (задача)",
   "playground-chat": "песочница", "playground-image": "песочница · картинка" };
 
+let updatesData = null;
 let accountsData = { accounts: [] }, busy = false, cookiesFor = null, signinFor = null, current = null, lightboxName = null;
 const state = { hours: 24, filters: {}, open: null, pg: { mode: "chat", model: "gemini-flash", account: "", prompt: "" } };
 
@@ -886,11 +894,14 @@ PAGES.telegram = async () => {
 };
 
 PAGES.system = async () => {
-  const s = await api("GET", "/admin/system");
+  const [s, u] = await Promise.all([api("GET", "/admin/system"), loadUpdates()]);
   const kv = (o) => `<dl class="kv">${Object.entries(o).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join("")}</dl>`;
   const yn = (b) => (b ? status("да", "good") : status("нет", ""));
   view().innerHTML = head("Система") + `<div class="grid cols-2">
-    <div class="card"><h2>Прокси</h2>${kv({ "версия": esc(s.version), "gemini-webapi": esc(s.gemini_webapi), "python": esc(s.python),
+    <div class="card"><h2>Прокси</h2>${kv({ "версия": `<span class="mono">${esc(verLabel(s.build))}</span>`,
+      "ветка / собран": `<span class="mono">${esc(s.build.branch || "—")}</span> · ${esc(s.build.built_at ? clock(s.build.built_at, true) : "—")}`,
+      "gemini-webapi": `<span class="mono">${esc(s.gemini_webapi)}${s.build.gemini_webapi.commit ? ` · ${esc(shortSha(s.build.gemini_webapi.commit))}` : ""}</span>`,
+      "python": esc(s.python),
       "запущен": esc(when(s.started_at)), "память": s.rss_mb ? `${s.rss_mb} МБ` : "—", "записей в журнале": num(s.journal_records) })}</div>
     <div class="card"><h2>Браузер для входа</h2>${kv({
       "DevTools (CDP)": s.browser.ok ? status("доступен", "good") : status("недоступен", "critical"),
@@ -905,15 +916,76 @@ PAGES.system = async () => {
       "таймауты чат / картинка / видео": `${s.settings.chat_timeout} / ${s.settings.image_timeout} / ${s.settings.video_timeout} с`,
       "пауза после лимита": `${s.settings.quota_cooldown / 60} мин (видео ${s.settings.video_cooldown / 3600} ч)`,
       "на аккаунт одновременно": `${s.settings.account_concurrency}, пауза между стартами ${s.settings.account_min_interval} с` })}</div>
-  </div>`;
+  </div>` + updatesCard(u);
+  $("#upd-check").onclick = (e) => {
+    e.currentTarget.disabled = true; e.currentTarget.textContent = "Проверяю…";
+    act(() => loadUpdates(true), "Проверено");
+  };
 };
+
+const shortSha = (sha) => (sha ? String(sha).slice(0, 7) : "");
+const newCommits = (n) => (n % 10 === 1 && n % 100 !== 11 ? `${n} новый коммит`
+  : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? `${n} новых коммита` : `${n} новых коммитов`);
+const verLabel = (b) => `v${b.version}${b.commit ? ` · ${shortSha(b.commit)}` : ""}`;
+const ghLink = (url, text, cls = "") => `<a class="${cls}" href="${esc(url)}" target="_blank" rel="noopener">${text}</a>`;
+async function loadUpdates(force) {
+  updatesData = await api(force ? "POST" : "GET", force ? "/admin/updates/check" : "/admin/updates");
+  const b = updatesData.build, found = (updatesData.check && updatesData.check.available) || [];
+  $("#brand-ver").textContent = verLabel(b) + (found.length ? " ↑" : "");
+  $("#brand-ver").title = found.length ? `Есть обновления:\n${found.join("\n")}` : `Сборка ${b.commit || "без коммита"}`;
+  $("#nav").innerHTML = navHtml();
+  return updatesData;
+}
+function updatesCard(u) {
+  const c = u.check, b = u.build;
+  const commits = (list) => (list && list.length ? `<ul class="commits">${list.map((x) =>
+    `<li>${ghLink(x.url || "#", esc(x.sha), "mono")}<span class="muted">${esc(clock(x.date, true))}</span><span>${esc(x.message)}</span></li>`).join("")}</ul>` : "");
+  const more = (p) => (p.behind > (p.commits || []).length
+    ? `<div class="muted small">… и ещё ${p.behind - p.commits.length}${p.url ? ` — ${ghLink(p.url, "все на GitHub")}` : ""}</div>` : "");
+  const st = (p, okText) => (p.error ? status("не проверилось", "serious")
+    : p.behind === null ? status("коммит сборки неизвестен", "")
+    : p.behind ? status(newCommits(p.behind), "warning") : status(okText, "good"));
+  const err = (p) => (p.error ? `<div class="muted small">${esc(p.error)}</div>` : "");
+  const repo = (r) => (r ? ghLink(`https://github.com/${r}`, esc(r)) : "");
+  let body;
+  if (!c) {
+    body = `<p class="muted">Ещё не проверялось. ${u.auto_hours > 0
+      ? `Автопроверка раз в ${u.auto_hours} ч, первая — через минуту после старта.`
+      : "Автопроверка выключена (GOP_UPDATE_CHECK_HOURS=0)."}</p>`;
+  } else {
+    const p = c.proxy || {}, l = c.library || {}, up = c.upstream || {};
+    const libState = l.error ? st(l) : l.release_newer ? status(`релиз ${l.release.tag}`, "warning")
+      : l.behind ? status(newCommits(l.behind), "warning") : status("актуальна", "good");
+    body = `<div class="upd">
+      <section><h3>Прокси ${st(p, "актуален")}</h3>
+        <div class="muted small">${repo(p.repo)} · ветка <span class="mono">${esc(p.branch || "—")}</span>
+          · сборка <span class="mono">${esc(shortSha(b.commit) || "—")}</span>${b.built_at ? ` от ${esc(clock(b.built_at, true))}` : ""}</div>
+        ${err(p)}${commits(p.commits)}${more(p)}</section>
+      <section><h3>gemini-webapi ${libState}</h3>
+        <div class="muted small">${repo(l.repo)} · установлена <span class="mono">${esc(l.version || b.gemini_webapi.version || "—")}</span>${l.commit
+          ? ` (коммит <span class="mono">${esc(shortSha(l.commit))}</span>)` : ""}
+          · последний релиз ${l.release ? `${ghLink(l.release.url, esc(l.release.tag))} от ${esc(clock(l.release.date, true))}` : "—"}</div>
+        ${err(l)}${commits(l.commits)}${more(l)}</section>
+      <section><h3>Исходный прокси ${st(up, "ничего нового")}</h3>
+        <div class="muted small">${repo(up.repo)} · коммиты, которых нет в нашей ветке</div>
+        ${err(up)}${commits(up.commits)}${more(up)}</section>
+    </div>`;
+  }
+  return `<div class="card" style="margin-top:16px"><h2>Обновления<span class="sp"></span>
+    <span class="muted small" style="font-weight:400">${c ? `проверено ${esc(rel(c.checked_at))}` : ""}</span>
+    <button class="sm" id="upd-check">Проверить сейчас</button></h2>${body}</div>`;
+}
+
+
 
 // ---- shell ---------------------------------------------------------------
 function navHtml() {
   const bad = accountsData.accounts.filter((a) => a.enabled && a.state !== "ok").length;
+  const upd = ((updatesData && updatesData.check && updatesData.check.available) || []).length;
   return TABS.map(([id, label]) => `<a href="#${id}" class="${current === id ? "active" : ""}">
     <svg viewBox="0 0 24 24" fill="currentColor">${ICON[id]}</svg>${label}
-    ${id === "accounts" && bad ? `<span class="count" style="color:var(--critical)">${bad} ⚠</span>` : ""}</a>`).join("");
+    ${id === "accounts" && bad ? `<span class="count" style="color:var(--critical)">${bad} ⚠</span>` : ""}
+    ${id === "system" && upd ? `<span class="count" style="color:var(--accent)" title="Есть обновления">↑ ${upd}</span>` : ""}</a>`).join("");
 }
 async function render() {
   current = (location.hash.slice(1) || "overview");
@@ -921,6 +993,7 @@ async function render() {
   try {
     await PAGES[current]();
     showApp();
+    if (!updatesData) loadUpdates().catch(() => {});
   } catch (e) { if (e.message !== "Нужен вход") toast(e.message); }
   $("#nav").innerHTML = navHtml();
 }

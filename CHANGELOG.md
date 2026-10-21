@@ -5,9 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — fork Muxee4ka/gemini-webapi-proxy
+## [0.2.0] — 2026-10-21 — fork Muxee4ka/gemini-webapi-proxy
 
 ### Added
+- Version and updates in the admin UI: the sidebar shows `v<version> · <commit>`, Система →
+  Обновления lists new commits of this branch, a newer gemini-webapi release or commits after
+  the pinned one, and commits of the original proxy this fork lacks; checked every
+  `GOP_UPDATE_CHECK_HOURS` (6) and on demand, a new finding is a Telegram alert (`update`).
+  The build's commit/branch/date come from Docker build args (`GOP_BUILD_*`)
+- `gemini-webapi` pinned to upstream master after v2.1.1 (PR #361: transient network
+  retries, base cookies drift); the image installs git only while building
 - Telegram bot (admin UI → Telegram; `docs/telegram.md`): admins linked by a one-time
   link, `/status`, `/accounts` with enable/disable/reset/check buttons, `/stats`, `/events`;
   alerts from the pool (`events.py`): logged out, abuse flag, quota, 429, all accounts
@@ -46,6 +53,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `UsageLimitExceededError` is 429 (was 500); a temporarily blocked IP is 503
 
 ### Fixed
+- Gemini's error 1096 after a complete answer no longer drops the answer
+- Video jobs keep running without retries on the new gemini-webapi (`current_retry=0` is
+  handled by the proxy's client; the library's `@running` no longer reads it)
 - Data dir in the Docker image is `/app/data` (`GOP_DATA_DIR`): the model registry and
   videos used to land in `/src/data` inside the container, outside the volume
 - Video jobs: the stream is allowed to stay silent for `GOP_VIDEO_TIMEOUT` and the prompt

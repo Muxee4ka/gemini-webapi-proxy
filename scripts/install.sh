@@ -62,6 +62,14 @@ source .env
 set +a
 port="${GOP_PORT:-4982}"
 
+# The admin UI shows the build and what is newer on GitHub (System tab, Updates).
+if git rev-parse --git-dir >/dev/null 2>&1; then
+    export GOP_BUILD_COMMIT GOP_BUILD_BRANCH GOP_BUILD_DATE
+    GOP_BUILD_COMMIT="$(git rev-parse HEAD)"
+    GOP_BUILD_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+    GOP_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+fi
+
 echo "== Building images (first run takes a few minutes)"
 docker compose build
 

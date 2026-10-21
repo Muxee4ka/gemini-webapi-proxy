@@ -71,6 +71,23 @@ source and a worked example of exporting a `cookies.txt`.
 | `GOP_VIDEO_KEEP_HOURS` | `24` | Finished videos (`GOP_DATA_DIR/videos/*.mp4`) and their jobs are dropped after this many hours. |
 | `GEMINI_COOKIE_PATH` | _(temp dir)_ | Read by `gemini-webapi`, not by the proxy: where rotated cookies are cached. Point it into a persistent volume (with `cdp` too: after the hand-over only the proxy has the current cookies) (the compose file uses `/app/data/cookie-cache`). Otherwise a restart can fall back to the original, already rotated `__Secure-1PSIDTS`, the session turns into a logged-out guest and only `gemini-flash-lite` is listed. |
 
+## Build and updates
+
+The admin UI (Система → Обновления) shows the running build and what is newer on GitHub;
+a new finding is also a Telegram alert (`update`). The `GOP_BUILD_*` values are Docker
+build args (`scripts/install.sh` passes them from git); without them the UI cannot say how
+far behind the build is and shows only the branch head.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GOP_BUILD_COMMIT` / `GOP_BUILD_BRANCH` / `GOP_BUILD_DATE` | _(empty)_ | Set at build time: `docker compose build --build-arg GOP_BUILD_COMMIT=$(git rev-parse HEAD) ...`, or exported before `docker compose build` with the root compose file. |
+| `GOP_UPDATE_CHECK_HOURS` | `6` | How often GitHub is asked (first check a minute after start). `0` = only the UI button. |
+| `GOP_UPDATE_REPO` | `Muxee4ka/gemini-webapi-proxy` | Repository of this proxy. |
+| `GOP_UPDATE_BRANCH` | _(build branch, else `main`)_ | Branch whose new commits are reported. |
+| `GOP_UPSTREAM_REPO` | `Lutiancheng1/gemini-webapi-proxy` | The original proxy: its commits this branch does not have. |
+| `GOP_LIBRARY_REPO` | `HanaokaYuzu/Gemini-API` | gemini-webapi: newer releases, and new commits after a git-pinned one. |
+| `GOP_GITHUB_TOKEN` | _(empty)_ | Only for a private repository or more than 60 GitHub requests an hour per IP (one check makes 4–5). |
+
 ## Accounts
 
 | Variable | Default | Description |
