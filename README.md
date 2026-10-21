@@ -104,14 +104,41 @@ client — without copy-pasting prompts into the web UI.
 - ✏️ **Image edits** — `POST /openai/v1/images/edits`: upload an image, describe the change
 - 🎬 **Video generation (Veo)** — OpenAI Videos API shape: `POST /openai/v1/videos` → job → mp4
 - 🍪 **Pluggable cookie sources** — desktop browser (Safari/Chrome/…), env vars, Netscape cookie file
-- 👥 **Several accounts + admin UI** — `/admin/ui`: state and limits per account, sign-in through the server's browser, automatic switch when an account runs out ([docs/accounts.md](docs/accounts.md))
-- 🐳 **One-command Docker** — `docker compose up -d`, auto-restart, host network bridge for the local proxy
+- 👥 **Several accounts + admin UI** — `/admin/ui`: state and limits per account, sign-in through the server's browser, automatic switch when an account runs out, a proxy per account, request journal, client keys, playground ([docs/accounts.md](docs/accounts.md))
+- 🐳 **One-command server install** — `./scripts/install.sh`: proxy + sign-in browser in Docker, keys generated, auto-restart
 - 🔌 **Multi-fallback image download** — httpx (RPC / preview URL) → gemini-webapi library save; no browser in the image
 - 🛡 **Upstream refusal detection** — Gemini "I cannot fulfill…" answers become errors (403 images / 502 chat), exhausted quota → 429
 - 🛠 **Optional API key** — `GOP_API_KEY=...` enables Bearer auth; empty = off (local-only default)
 - 📋 **Live model list** — the account's models (`gemini-flash`, `gemini-pro`, `gemini-argon`, `gemini-flash-lite`) plus stable `gemini-2.5-*-image` aliases via `/openai/v1/models`
 
 ## 🚀 Quick Start
+
+### Server: one command (Docker, several accounts, admin UI)
+
+On a Linux server with Docker and Compose v2:
+
+```bash
+git clone https://github.com/Muxee4ka/gemini-webapi-proxy
+cd gemini-webapi-proxy
+./scripts/install.sh            # add --listen 0.0.0.0 to listen on all interfaces, --port N to move it
+```
+
+The script writes `.env` (API key and admin password, mode 0600), builds and starts
+the proxy and the sign-in browser (`docker-compose.yml`), waits for `/health` and
+prints the admin UI address and password. Then:
+
+1. Open `http://<server>:4982/admin/ui` (by default it listens on 127.0.0.1 only:
+   use `ssh -N -L 4982:127.0.0.1:4982 <server>` or a reverse proxy with TLS, see
+   [docs/accounts.md](docs/accounts.md#setup) for the nginx WebSocket block).
+2. Press **Войти** on the `default` account and sign in to Google in the browser shown
+   on the page; add more accounts with **+ Аккаунт** (the UI is in Russian).
+3. Point OpenAI clients at `http://<server>:4982/openai/v1` with `Bearer <GOP_API_KEY>`
+   from `.env`, or create a named key per client in the **Ключи** tab.
+
+Running `./scripts/install.sh` again keeps `.env` and `data/` and rebuilds/restarts.
+A proxy per account (another exit address towards Google) is set in the account card.
+
+### Single account on a desktop
 
 You need either:
 
@@ -138,7 +165,7 @@ python3 -m venv .venv
 ./start.sh
 ```
 
-### Option C: Docker (long-running)
+### Option C: Docker on macOS (cookies from Safari)
 
 ```bash
 git clone https://github.com/Lutiancheng1/gemini-webapi-proxy

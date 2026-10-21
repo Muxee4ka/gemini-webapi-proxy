@@ -52,6 +52,9 @@ UI turns it into a stored account.
 
 ## Setup
 
+`./scripts/install.sh` does all of this with Docker Compose (proxy + sign-in browser,
+`.env` with a generated API key and admin password); the steps below are what it sets up.
+
 1. Run the sign-in browser from [`integrations/cdp-browser`](../integrations/cdp-browser)
    next to the proxy (host network). Besides DevTools on `127.0.0.1:9223` it serves
    noVNC on `127.0.0.1:6080`; both only on loopback.

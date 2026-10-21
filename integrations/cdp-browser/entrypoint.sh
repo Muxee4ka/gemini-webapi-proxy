@@ -7,8 +7,8 @@ rm -f "$PROFILE_DIR"/Singleton* /tmp/.X99-lock /tmp/.X11-unix/X99
 Xvfb "$DISPLAY" -screen 0 1280x900x24 -nolisten tcp &
 sleep 1
 # The screen for signing in from a web page (noVNC); both ends on loopback only.
-x11vnc -display "$DISPLAY" -localhost -nopw -forever -shared -rfbport 5900 -quiet -bg -o /tmp/x11vnc.log
-websockify --web /usr/share/novnc 127.0.0.1:"$VNC_PORT" 127.0.0.1:5900 >/tmp/websockify.log 2>&1 &
+x11vnc -display "$DISPLAY" -localhost -nopw -forever -shared -rfbport "${RFB_PORT:-5900}" -quiet -bg -o /tmp/x11vnc.log
+websockify --web /usr/share/novnc 127.0.0.1:"$VNC_PORT" 127.0.0.1:"${RFB_PORT:-5900}" >/tmp/websockify.log 2>&1 &
 exec chromium \
     --user-data-dir="$PROFILE_DIR" \
     --remote-debugging-port="$CDP_PORT" \

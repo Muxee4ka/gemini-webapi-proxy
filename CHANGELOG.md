@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased] — fork Muxee4ka/gemini-webapi-proxy
 
 ### Added
+- `scripts/install.sh`: one-command server install. Root `docker-compose.yml` now runs
+  the proxy and the sign-in browser together (cookie source `cdp`, no default HTTP proxy,
+  browser ports via `GOP_CDP_PORT` / `GOP_VNC_PORT` / `GOP_RFB_PORT`); the macOS Safari
+  flow (`scripts/docker-up.sh`) keeps `GOP_COOKIE_SOURCE=env` and starts the proxy only
+- `data/` is ignored by git and left out of the Docker build context (it holds account
+  cookies, client keys and the request journal)
 - `stream=true` for chat completions (the answer is generated in full, then sent as SSE)
 - Tool-calling emulation: OpenAI `tools` → prompt block, `<tool_calls>` answer → `tool_calls`
 - `POST /openai/v1/images/edits` — instruction-based edits of uploaded images

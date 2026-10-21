@@ -1,38 +1,68 @@
+# The proxy and the browser used to sign in to Google accounts from the admin UI.
+# One-command setup: ./scripts/install.sh (writes .env, builds, starts, prints the UI URL).
+#
+# Both services share the host network: the proxy reaches the browser's DevTools
+# (127.0.0.1:9223) and noVNC (127.0.0.1:6080), which listen on loopback only.
+# Settings come from .env (see .env.example and docs/configuration.md).
 services:
   gemini-webapi-proxy:
-    image: ghcr.io/lutiancheng1/gemini-webapi-proxy:latest
     build:
       context: .
-      dockerfile: Dockerfile
-      network: host          # build needs the host's network to reach apt + pip mirrors
+      network: host          # apt + pip during the build
       args:
-        GOP_BUILD_HTTP_PROXY: ${GOP_BUILD_HTTP_PROXY:-http://127.0.0.1:7897}
+        GOP_BUILD_HTTP_PROXY: ${GOP_BUILD_HTTP_PROXY:-}
+    image: gemini-webapi-proxy:local
     container_name: gemini-webapi-proxy
-    network_mode: host      # runtime: share the host's loopback so host.docker.internal isn't needed
+    network_mode: host
     env_file:
       - path: .env
         required: false
-      - path: data/runtime.env
+      - path: data/runtime.env   # written by scripts/sync_runtime_env.py (macOS flow)
         required: false
     environment:
-      GOP_PORT: "4982"
-      GOP_COOKIE_SOURCE: "env"
+      GOP_HOST: ${GOP_HOST:-127.0.0.1}
+      GOP_PORT: ${GOP_PORT:-4982}
+      # The first-start "default" account reads this source; accounts signed in
+      # from the admin UI keep their own cookies (docs/accounts.md).
+      GOP_COOKIE_SOURCE: ${GOP_COOKIE_SOURCE:-cdp}
+      GOP_CDP_URL: http://127.0.0.1:${GOP_CDP_PORT:-9223}
+      GOP_VNC_URL: http://127.0.0.1:${GOP_VNC_PORT:-6080}
+      GOP_HTTP_PROXY: ${GOP_HTTP_PROXY:-}
       GOP_PROBE_ON_START: "false"
-      GOP_LOG_FORMAT: "json"
+      GOP_LOG_FORMAT: json
       # Rotated cookies survive restarts (otherwise a restart can fall back to a
       # logged-out guest session that only sees gemini-flash-lite).
-      GEMINI_COOKIE_PATH: "/app/data/cookie-cache"
-      GOP_HTTP_PROXY: ${GOP_HTTP_PROXY:-http://127.0.0.1:7897}
+      GEMINI_COOKIE_PATH: /app/data/cookie-cache
+    command: ["sh", "-c", "exec python -m gemini_webapi_proxy --host \"$$GOP_HOST\" --port \"$$GOP_PORT\""]
     volumes:
       - ./data:/app/data
+    mem_limit: 768m
     restart: unless-stopped
     healthcheck:
       test:
         - "CMD"
         - "python"
         - "-c"
-        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4982/health', timeout=5)"
+        - "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.environ.get('GOP_PORT', '4982') + '/health', timeout=5)"
       interval: 30s
       timeout: 8s
       retries: 3
       start_period: 90s
+
+  gemini-browser:
+    build:
+      context: integrations/cdp-browser
+      network: host
+    image: gemini-cdp-browser:local
+    container_name: gemini-browser
+    network_mode: host
+    environment:
+      CDP_PORT: ${GOP_CDP_PORT:-9223}
+      VNC_PORT: ${GOP_VNC_PORT:-6080}
+      RFB_PORT: ${GOP_RFB_PORT:-5900}   # x11vnc, behind noVNC
+    volumes:
+      - ./data/browser-profile:/data/profile   # owned by uid 1000 (install.sh sets it)
+    shm_size: 256m
+    # One open Gemini tab takes about 250-300 MB.
+    mem_limit: 1600m
+    restart: unless-stopped
