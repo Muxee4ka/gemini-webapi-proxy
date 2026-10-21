@@ -107,6 +107,7 @@ class FakeClient:
         self.account_status = AccountStatus.AVAILABLE
         self.quotas: dict = {}
         self.cookies: dict = {}
+        self.timeout = self.watchdog_timeout = 120
 
     async def close(self) -> None:
         pass
@@ -147,6 +148,10 @@ def app_client(monkeypatch):
     monkeypatch.setattr(app_module, "journal", stats.journal)
     monkeypatch.setattr(dashboard, "journal", stats.journal)
     monkeypatch.setattr(pool_module, "journal", stats.journal)
+    from gemini_webapi_proxy.services import video as video_service
+
+    monkeypatch.setattr(video_service, "journal", stats.journal)
+    monkeypatch.setattr(video_service, "pool", pool_module.pool)
     with TestClient(app_module.app) as c:
         yield c
 
@@ -218,3 +223,23 @@ def test_gallery_keeps_images(app_client, tmp_path):
     assert app_client.get("/admin/gallery/..%2Faccounts.json", headers=AUTH).status_code == 404
     assert app_client.delete(f"/admin/gallery/{items[0]['name']}", headers=AUTH).status_code == 200
     assert app_client.get("/admin/gallery", headers=AUTH).json()["images"] == []
+
+
+def test_playground_video_job_runs_on_the_pinned_account(app_client):
+    r = app_client.post(
+        "/admin/playground", headers=AUTH, json={"prompt": "a cat", "mode": "video", "account": "b"}
+    ).json()
+    job_id = r["video"]["id"]
+    for _ in range(50):
+        job = next(
+            j
+            for j in app_client.get("/admin/videos", headers=AUTH).json()["videos"]
+            if j["id"] == job_id
+        )
+        if job["status"] in ("completed", "failed"):
+            break
+        time.sleep(0.05)
+    # The fake account answers with text and no video: a refusal, on the account asked for.
+    assert job["status"] == "failed" and job["account"] == "b" and job["key"] == "admin-ui"
+    rows = app_client.get("/admin/requests?endpoint=video-job", headers=AUTH).json()["requests"]
+    assert rows[0]["account"] == "b" and rows[0]["video"] == job_id

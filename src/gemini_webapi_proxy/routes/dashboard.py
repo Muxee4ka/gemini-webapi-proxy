@@ -259,7 +259,7 @@ async def system() -> dict:
 class PlaygroundIn(BaseModel):
     prompt: str
     model: str = "gemini-flash"
-    mode: str = "chat"  # chat | image
+    mode: str = "chat"  # chat | image | video
     account: str | None = None  # None: whichever account the pool picks
 
 
@@ -275,6 +275,13 @@ async def playground(body: PlaygroundIn):
     record: dict = {"ts": time.time(), "endpoint": f"playground-{body.mode}", "key": "admin-ui"}
     tokens = (current.set(record), pinned.set(body.account or None))
     try:
+        if body.mode == "video":
+            # A background job (minutes); it inherits the pinned account. The UI
+            # follows it through /admin/videos.
+            job = video.create_job(settings, model=body.model, prompt=body.prompt)
+            record["status"] = 200
+            record["video"] = job.id
+            return {"video": job.to_openai(), "model": body.model, "ms": 0}
         if body.mode == "image":
             resp = await create_image_generation(
                 settings,

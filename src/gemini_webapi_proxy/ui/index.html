@@ -579,13 +579,15 @@ PAGES.playground = async () => {
   const [m, acc] = await Promise.all([api("GET", "/admin/models"), api("GET", "/admin/accounts")]);
   const pg = state.pg;
   const models = m.models.filter((x) => (pg.mode === "image" ? x.image : x.chat));
+  const hint = { chat: "Сообщение", image: "Что нарисовать", video: "Что снять (видео делается несколько минут, дневной лимит маленький)" };
   if (!models.some((x) => x.id === pg.model)) pg.model = (models[0] || {}).id || "gemini-flash";
   view().innerHTML = head("Песочница", "запрос через пул — тратит лимиты аккаунта") + `
     <div class="grid cols-2" style="align-items:start">
       <div class="card"><form class="pg-form" id="pg-form">
         <div class="row"><div class="seg">
           <button type="button" data-mode="chat" class="${pg.mode === "chat" ? "on" : ""}">Чат</button>
-          <button type="button" data-mode="image" class="${pg.mode === "image" ? "on" : ""}">Картинка</button></div></div>
+          <button type="button" data-mode="image" class="${pg.mode === "image" ? "on" : ""}">Картинка</button>
+          <button type="button" data-mode="video" class="${pg.mode === "video" ? "on" : ""}">Видео</button></div></div>
         <div class="row">
           <label class="small muted">Модель</label>
           <select id="pg-model">${models.map((x) => `<option ${x.id === pg.model ? "selected" : ""}>${esc(x.id)}</option>`).join("")}</select>
@@ -593,7 +595,7 @@ PAGES.playground = async () => {
           <select id="pg-account"><option value="">авто (как у клиентов)</option>${acc.accounts.map((a) =>
             `<option value="${esc(a.id)}" ${pg.account === a.id ? "selected" : ""}>${esc(a.name)}</option>`).join("")}</select>
         </div>
-        <textarea id="pg-prompt" placeholder="${pg.mode === "image" ? "Что нарисовать" : "Сообщение"}">${esc(pg.prompt)}</textarea>
+        <textarea id="pg-prompt" placeholder="${hint[pg.mode]}">${esc(pg.prompt)}</textarea>
         <div class="row"><button class="primary" id="pg-send">Отправить</button><span id="pg-timer" class="muted small"></span></div>
       </form></div>
       <div class="card" id="pg-result"><div class="empty">Ответ появится здесь</div></div>
@@ -608,6 +610,7 @@ PAGES.playground = async () => {
     const timer = setInterval(() => ($("#pg-timer").innerHTML = `<span class="spinner"></span> ${((Date.now() - t0) / 1000).toFixed(0)} с`), 500);
     try {
       const r = await api("POST", "/admin/playground", { mode: pg.mode, model: pg.model, account: pg.account || null, prompt: pg.prompt });
+      if (r.video) { await followVideo(r.video.id, t0); return; }
       $("#pg-result").innerHTML = `<div class="row small fg2" style="margin-bottom:10px">${status("готово", "good")}
           <span>аккаунт: <b>${esc(r.account || "—")}</b></span>${r.tried.length > 1 ? `<span>переключения: ${esc(r.tried.join(" → "))}</span>` : ""}
           <span>${esc(r.model || "")}</span><span class="sp"></span><span>${ms(r.ms)}</span></div>
@@ -619,6 +622,32 @@ PAGES.playground = async () => {
     }
   };
 };
+
+async function followVideo(id, t0) {
+  // Video jobs run in the background for minutes: poll the job, then show the player.
+  const vstat = { queued: "в очереди", in_progress: "рендерится" };
+  while (true) {
+    const j = ((await api("GET", "/admin/videos")).videos || []).find((x) => x.id === id);
+    const box = $("#pg-result");
+    if (!box) return;  // left the tab: the job keeps running, see Media
+    if (!j) { box.innerHTML = `<div class="err">Задача ${esc(id)} пропала</div>`; return; }
+    const head = `<div class="row small fg2" style="margin-bottom:10px">%S<span>аккаунт: <b>${esc(j.account || "—")}</b></span>
+      <span>${esc(j.model)}</span><span class="sp"></span><span>${ms(Date.now() - t0)}</span></div>`;
+    if (j.status === "completed") {
+      box.innerHTML = head.replace("%S", status("готово", "good")) + (j.has_file
+        ? `<video controls autoplay src="/admin/videos/${esc(j.id)}/content"></video>` : `<div class="muted">Файл не сохранился</div>`);
+      return;
+    }
+    if (j.status === "failed") {
+      box.innerHTML = head.replace("%S", status("ошибка", "critical")) +
+        `<div class="err">${esc((j.error && j.error.message) || "")}</div><div class="muted small">${esc((j.error && j.error.code) || "")}</div>`;
+      return;
+    }
+    box.innerHTML = head.replace("%S", `<span class="spinner"></span> ${esc(vstat[j.status] || j.status)}`) +
+      `<div class="muted small">Можно уйти со страницы — задача продолжится, ролик появится в «Медиа».</div>`;
+    await new Promise((r) => setTimeout(r, 5000));
+  }
+}
 
 PAGES.media = async () => {
   const [v, g] = await Promise.all([api("GET", "/admin/videos"), api("GET", "/admin/gallery")]);
