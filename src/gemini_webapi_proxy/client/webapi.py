@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any
 
 from gemini_webapi import GeminiClient as _RealClient
+from gemini_webapi.exceptions import APIError
 from gemini_webapi.utils.decorators import running
 
 from gemini_webapi_proxy.client.base import (
@@ -23,17 +25,38 @@ def _unwrap_decorated(func: Any) -> Any:
     return func
 
 
+logger = logging.getLogger(__name__)
+
 _RAW_GENERATE = _unwrap_decorated(_RealClient._generate)
 _MAX_WEBAPI_RETRY = max(0, int(os.getenv("GOP_WEBAPI_MAX_RETRY", "1")))
+_GENERATE_RETRYING = running(retry=_MAX_WEBAPI_RETRY)(_RAW_GENERATE)
+_GENERATE_ONCE = running(retry=0)(_RAW_GENERATE)
+
+# Gemini Web may close a finished turn with BardErrorInfo 1096 after the whole answer
+# (the web app gets it too, e.g. on guest sessions); the library treats every error
+# code as fatal and drops the answer.
+_TRAILING_ERROR = "Unknown API error code: 1096"
 
 
 class _LowRetryGeminiClient(_RealClient):
-    """Gemini Web client with fewer automatic retries than upstream default (5)."""
+    """Gemini Web client with fewer automatic retries than upstream default (5).
 
-    @running(retry=_MAX_WEBAPI_RETRY)
-    async def _generate(self, *args: Any, **kwargs: Any):
-        async for item in _RAW_GENERATE(self, *args, **kwargs):
-            yield item
+    ``current_retry=0`` (passed through ``generate_content``) disables retries for one
+    call. gemini-webapi <= 2.1.1 read it in ``@running``; newer versions do not, so it
+    is handled here.
+    """
+
+    async def _generate(self, *args: Any, current_retry: int | None = None, **kwargs: Any):
+        generate = _GENERATE_ONCE if current_retry == 0 else _GENERATE_RETRYING
+        last = None
+        try:
+            async for item in generate(self, *args, **kwargs):
+                last = item
+                yield item
+        except APIError as exc:
+            if _TRAILING_ERROR not in str(exc) or not (getattr(last, "text", "") or "").strip():
+                raise
+            logger.info("Ignoring Gemini error 1096 after a complete answer")
 
 
 class WebAPIClient(BaseGeminiClient):
