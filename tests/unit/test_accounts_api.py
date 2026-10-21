@@ -164,7 +164,7 @@ def test_proxy_is_set_checked_masked_and_used_for_sign_in(client, monkeypatch):
 
     checked: list = []
 
-    async def egress_check(proxy):
+    async def egress_check(proxy, cookies=None):
         checked.append(proxy)
         return {"ip": "193.180.210.131", "country": "DK", "checked_at": 1.0, "proxy": proxy}
 
@@ -197,3 +197,11 @@ def test_proxy_is_set_checked_masked_and_used_for_sign_in(client, monkeypatch):
         ).status_code
         == 400
     )
+
+
+def test_sorry_redirect_names_the_address_google_saw():
+    from gemini_webapi_proxy.routes.accounts import _sorry_ip
+
+    loc = "https://www.google.com/sorry/index?continue=https://gemini.google.com/app&q=EgRoHOmqGPD04tYGIjCHqmt3F72wtLA9SkHwGls27uTP"
+    assert _sorry_ip(loc) == "104.28.233.170"
+    assert _sorry_ip("") is None

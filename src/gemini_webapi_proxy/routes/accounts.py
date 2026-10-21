@@ -182,20 +182,49 @@ class ProxyIn(BaseModel):
 _PROXY_SCHEMES = ("http", "https", "socks5", "socks5h")
 
 
-async def egress_check(proxy: str | None) -> dict:
-    """Where Google sees requests from: the public address behind ``proxy``."""
+def _sorry_ip(location: str) -> str | None:
+    """The address Google's "unusual traffic" redirect names (its ``q`` token)."""
+    from base64 import urlsafe_b64decode
+    from urllib.parse import parse_qs, urlsplit
+
+    token = (parse_qs(urlsplit(location).query).get("q") or [""])[0]
+    try:
+        raw = urlsafe_b64decode(token + "=" * (-len(token) % 4))
+    except ValueError:
+        return None
+    if len(raw) >= 6 and raw[0] == 0x12 and raw[1] == 4:
+        return ".".join(str(b) for b in raw[2:6])
+    return None
+
+
+async def egress_check(proxy: str | None, cookies: dict[str, str] | None = None) -> dict:
+    """Where Google sees requests from: the public address behind ``proxy``.
+
+    With the account's session cookies the Gemini check is the one that matters:
+    Google may let an anonymous visit through and still send a signed-in one to its
+    "unusual traffic" page.
+    """
     from curl_cffi.requests import AsyncSession
 
     started = time.monotonic()
     async with AsyncSession(proxy=proxy, timeout=20, impersonate="chrome") as http:
         info = (await http.get("https://ipinfo.io/json")).json()
-        gemini = await http.get("https://gemini.google.com/app", allow_redirects=False)
+        # Not the same thing: a VPN server may route Google domains elsewhere (WARP),
+        # so whether Gemini lets this route in is checked on Gemini itself.
+        session = {k: v for k, v in (cookies or {}).items() if k.startswith("__Secure-1PSID")}
+        gemini = await http.get(
+            "https://gemini.google.com/app", cookies=session or None, allow_redirects=False
+        )
+        location = gemini.headers.get("location") or ""
     return {
         "ip": info.get("ip"),
         "country": info.get("country"),
         "city": info.get("city"),
         "org": info.get("org"),
         "gemini_status": gemini.status_code,
+        "gemini_signed_in": bool(session),
+        "gemini_blocked": "/sorry/" in location,
+        "gemini_seen_ip": _sorry_ip(location),
         "ms": round((time.monotonic() - started) * 1000),
         "checked_at": time.time(),
         "proxy": proxy,
@@ -222,7 +251,7 @@ async def set_proxy(account_id: str, body: ProxyIn) -> dict:
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
     try:
-        egress = await egress_check(proxy or get_settings().http_proxy)
+        egress = await egress_check(proxy or get_settings().http_proxy, slot.account.cookies)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"The proxy does not work: {exc}") from exc
     changes: dict = {"proxy": proxy, "egress": egress}
@@ -238,7 +267,9 @@ async def set_proxy(account_id: str, body: ProxyIn) -> dict:
 async def check_proxy(account_id: str) -> dict:
     slot = _slot(account_id)
     try:
-        egress = await egress_check(slot.account.proxy or get_settings().http_proxy)
+        egress = await egress_check(
+            slot.account.proxy or get_settings().http_proxy, slot.account.cookies
+        )
     except Exception as exc:
         egress = {"error": str(exc)[:300], "checked_at": time.time(), "proxy": slot.account.proxy}
     _store().update(account_id, egress=egress)

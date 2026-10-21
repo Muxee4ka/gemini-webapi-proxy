@@ -296,3 +296,26 @@ def test_redirects_through_a_local_proxy_are_followed():
     assert seen["http://127.0.0.1:10812"] is True
     assert seen["http://193.180.210.131:3128"] == CurlFollow.SAFE
     assert seen[None] == CurlFollow.SAFE
+
+
+async def test_a_blocked_address_is_not_retried_for_a_while(monkeypatch):
+    from gemini_webapi.exceptions import TemporarilyBlockedError
+
+    calls: list = []
+
+    async def blocked(settings, account):
+        calls.append(account.id)
+        raise TemporarilyBlockedError("HTTP 429")
+
+    monkeypatch.setattr(pool_module, "_new_client", blocked)
+    monkeypatch.setattr(pool_module, "pool", pool_module.AccountPool())
+    settings = get_settings()
+    pool_module.pool.configure(settings)
+    slot = pool_module.pool.slots["default"]
+    await slot.ensure(settings)
+    slot.failed_at -= 120  # a normal failure would be retried by now
+    await slot.ensure(settings)
+    assert calls == ["default"]
+    slot.failed_at -= pool_module._BLOCKED_RETRY_SECONDS
+    await slot.ensure(settings)
+    assert calls == ["default", "default"]

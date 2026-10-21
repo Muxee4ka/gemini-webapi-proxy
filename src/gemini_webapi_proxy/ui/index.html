@@ -493,7 +493,8 @@ function egressLine(a) {
   if (e.error) return `<span>выход: ${via}</span>${status("прокси не отвечает", "critical")}<span class="err">${esc(e.error.slice(0, 120))}</span>`;
   const signedBefore = a.proxy_set_at && a.signed_in_at && a.signed_in_at < a.proxy_set_at;
   return `<span>выход: <b>${esc([e.country, e.city].filter(Boolean).join(" · "))}</b> <span class="mono">${esc(e.ip)}</span></span>
-    <span class="muted">${esc(e.org || "")}</span><span>${via}</span><span class="muted">проверен ${rel(e.checked_at)}</span>${signedBefore ? status("войди заново через прокси", "warning") : ""}`;
+    <span class="muted">${esc(e.org || "")}</span><span>${via}</span><span class="muted">проверен ${rel(e.checked_at)}</span>${signedBefore ? status("войди заново через прокси", "warning") : ""}
+    ${e.gemini_blocked ? status(`Gemini: «необычный трафик» с ${e.gemini_seen_ip || "этого адреса"}`, "critical") : ""}`;
 }
 
 PAGES.requests = async () => {

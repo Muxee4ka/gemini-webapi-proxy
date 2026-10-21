@@ -23,7 +23,7 @@ from typing import Any, TypeVar
 
 from gemini_webapi import GeminiClient
 from gemini_webapi.constants import AccountStatus
-from gemini_webapi.exceptions import AuthError, UsageLimitExceededError
+from gemini_webapi.exceptions import AuthError, TemporarilyBlockedError, UsageLimitExceededError
 
 from gemini_webapi_proxy.client import curl_compat
 from gemini_webapi_proxy.client.accounts import ACCOUNTS_FILE, Account, AccountStore
@@ -43,6 +43,8 @@ curl_compat.install()
 T = TypeVar("T")
 
 _UNAUTH_RETRY_SECONDS = 60.0
+# Google answered 429 / its "unusual traffic" page: retrying soon only prolongs it.
+_BLOCKED_RETRY_SECONDS = 15 * 60.0
 _MODELS_REFRESH_INTERVAL = 60.0
 registry = ModelRegistry()
 # The account being signed in through the sign-in browser (admin UI), if any.  While
@@ -237,6 +239,9 @@ class Slot:
             except Exception as exc:
                 logger.warning("account %s: Gemini client init failed: %s", self.id, exc)
                 self.error, self.failed_at = str(exc)[:500], time.monotonic()
+                if isinstance(exc, TemporarilyBlockedError):
+                    # failed_at in the future: _retry_due() waits the longer pause
+                    self.failed_at += _BLOCKED_RETRY_SECONDS - _UNAUTH_RETRY_SECONDS
                 if self.account.source == "stored" and "__Secure-1PSID" in str(exc):
                     self.needs_login = True
                 if old is not None:
