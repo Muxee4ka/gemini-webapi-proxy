@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased] — fork Muxee4ka/gemini-webapi-proxy
 
 ### Added
+- Telegram bot (admin UI → Telegram; `docs/telegram.md`): admins linked by a one-time
+  link, `/status`, `/accounts` with enable/disable/reset/check buttons, `/stats`, `/events`;
+  alerts from the pool (`events.py`): logged out, abuse flag, quota, 429, all accounts
+  down, recovered — throttled to once per 30 min per account and kind
 - `scripts/install.ps1` (Windows, Docker Desktop) and `docker-compose.desktop.yml`: no host
   networking, the browser shares the proxy's network, only the proxy port is published;
   `install.sh --desktop` (automatic on macOS). Browser profile in a named volume.

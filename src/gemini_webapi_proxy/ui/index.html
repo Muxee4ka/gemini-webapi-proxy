@@ -301,11 +301,12 @@ const ICON = {
   models: '<path d="M12 2 3 7v10l9 5 9-5V7Zm0 2.3L18.6 8 12 11.7 5.4 8ZM5 9.7l6 3.3v6.6l-6-3.3Zm8 9.9V13l6-3.3v6.6Z"/>',
   playground: '<path d="m12 2 2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4Z"/>',
   media: '<path d="M4 4h16a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Zm1 12 4-5 3 4 2-2 5 5V6H5Zm11-7a1.5 1.5 0 1 0-1.5-1.5A1.5 1.5 0 0 0 16 9Z"/>',
+  telegram: '<path d="M21.9 4.3 18.7 19.5c-.2 1-.9 1.3-1.8.8l-4.9-3.6-2.4 2.3c-.3.3-.5.5-1 .5l.4-5 9.1-8.2c.4-.4-.1-.6-.6-.2L6.3 13.2l-4.8-1.5c-1-.3-1-1 .2-1.5l18.8-7.2c.9-.3 1.6.2 1.4 1.3Z"/>',
   system: '<path d="M19.4 13a7.5 7.5 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-1.7-1L15 3.5h-4L10.6 6a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7.5 7.5 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.4 7.4 0 0 0 1.7-1l2.4 1 2-3.4ZM13 15.5A3.5 3.5 0 1 1 16.5 12 3.5 3.5 0 0 1 13 15.5Z" transform="translate(-1 0)"/>',
 };
 const TABS = [
   ["overview", "Обзор"], ["accounts", "Аккаунты"], ["requests", "Запросы"], ["keys", "Ключи"],
-  ["models", "Модели"], ["playground", "Песочница"], ["media", "Медиа"], ["system", "Система"],
+  ["models", "Модели"], ["playground", "Песочница"], ["media", "Медиа"], ["telegram", "Telegram"], ["system", "Система"],
 ];
 const ACC_STATE = {
   ok: ["работает", "good"], idle: ["не запущен", ""], disabled: ["выключен", ""],
@@ -813,6 +814,75 @@ PAGES.media = async () => {
     $("#lb-meta").textContent = [clock(im.ts, true), im.model, im.account, im.key, bytes(im.size)].filter(Boolean).join(" · ");
     $("#lightbox").showModal();
   }));
+};
+
+PAGES.telegram = async () => {
+  const t = await api("GET", "/admin/telegram");
+  const state = t.running ? status(`работает: @${t.username}`, "good")
+    : t.token_set ? status(t.error ? "ошибка" : "не запущен", t.error ? "critical" : "") : status("не настроен", "");
+  const uiDefault = location.origin + "/admin/ui";
+  view().innerHTML = head("Telegram", "бот для статуса, управления аккаунтами и уведомлений") + `
+    <div class="grid cols-2" style="align-items:start">
+      <div class="card"><h2>Бот ${state}</h2>
+        <form id="tg-form" class="grid" style="gap:10px">
+          <label class="small muted">Токен от @BotFather ${t.token_set ? `(сейчас ${esc(t.token)})` : ""}</label>
+          <input id="tg-token" type="password" autocomplete="off" placeholder="${t.token_set ? "оставь пустым, чтобы не менять" : "123456789:AA..."}">
+          <label class="small muted">Адрес админки для кнопки в сообщениях (только https)</label>
+          <input id="tg-url" value="${esc(t.ui_url || (location.protocol === "https:" ? uiDefault : ""))}" placeholder="https://.../admin/ui">
+          <label class="small muted">Прокси до api.telegram.org (если напрямую недоступен)</label>
+          <input id="tg-proxy" value="${esc(t.proxy || "")}" placeholder="http://host:port или socks5://host:port — пусто: напрямую">
+          <label class="row small"><input type="checkbox" id="tg-enabled" ${t.enabled ? "checked" : ""}> бот включён</label>
+          <div class="row"><button class="primary">Сохранить и перезапустить</button>
+            ${t.token_set ? `<button type="button" class="danger" id="tg-remove">Отключить бота</button>` : ""}</div>
+        </form>
+        ${t.error ? `<div class="err small sec">${esc(t.error)}</div>` : ""}
+      </div>
+      <div class="card"><h2>Администраторы</h2>
+        ${Object.keys(t.admins).length ? `<div class="grid" style="gap:6px">${Object.entries(t.admins).map(([id, name]) => `
+          <div class="row"><b>${esc(name)}</b><span class="muted small mono">${esc(id)}</span><span class="sp"></span>
+          <button class="sm danger" data-unlink="${esc(id)}">Отвязать</button></div>`).join("")}</div>` : `<div class="muted small">Пока никого. Привяжи себя — бот будет присылать уведомления.</div>`}
+        <div class="sec row"><button id="tg-link" ${t.running ? "" : "disabled"}>Привязать администратора</button>
+          <button id="tg-test" ${t.running && Object.keys(t.admins).length ? "" : "disabled"}>Отправить тест</button></div>
+        <div id="tg-link-box" class="sec small"></div>
+      </div>
+      <div class="card"><h2>Уведомления</h2>
+        <div class="grid" style="gap:6px">${Object.entries(t.kinds).map(([k, title]) => `
+          <label class="row small"><input type="checkbox" data-kind="${esc(k)}" ${t.notify.includes(k) ? "checked" : ""}> ${esc(title)}</label>`).join("")}</div>
+        <p class="muted small">Одно и то же событие по одному аккаунту — не чаще раза в 30 минут.</p>
+        <button id="tg-notify">Сохранить</button>
+      </div>
+      <div class="card"><h2>Последние события</h2>
+        ${t.events.length ? `<div class="grid" style="gap:8px">${t.events.map((e) => `<div class="small">
+          <div class="row">${status(e.title, e.kind === "recovered" ? "good" : e.kind === "quota" ? "warning" : "critical")}
+            ${e.account ? `<b>${esc(e.account)}</b>` : ""}<span class="sp"></span><span class="muted">${rel(e.ts)}</span></div>
+          ${e.text ? `<div class="fg2">${esc(e.text)}</div>` : ""}</div>`).join("")}</div>` : `<div class="empty">Событий пока не было</div>`}
+      </div>
+    </div>`;
+  $("#tg-form").onsubmit = (e) => {
+    e.preventDefault();
+    const body = { ui_url: $("#tg-url").value.trim(), proxy: $("#tg-proxy").value.trim(), enabled: $("#tg-enabled").checked };
+    const token = $("#tg-token").value.trim();
+    if (token) body.token = token;
+    act(() => api("POST", "/admin/telegram", body), "Сохранено");
+  };
+  const rm = $("#tg-remove");
+  if (rm) rm.onclick = () => { if (confirm("Отключить бота и забыть токен и администраторов?")) act(() => api("POST", "/admin/telegram", { token: "" }), "Бот отключён"); };
+  $("#tg-notify").onclick = () => act(() => api("POST", "/admin/telegram",
+    { notify: [...view().querySelectorAll("[data-kind]")].filter((c) => c.checked).map((c) => c.dataset.kind) }), "Сохранено");
+  view().querySelectorAll("[data-unlink]").forEach((b) => (b.onclick = () =>
+    confirm("Отвязать администратора?") && act(() => api("DELETE", `/admin/telegram/admins/${encodeURIComponent(b.dataset.unlink)}`))));
+  $("#tg-link").onclick = async () => {
+    try {
+      const l = await api("POST", "/admin/telegram/link");
+      $("#tg-link-box").innerHTML = `Открой ссылку в Telegram и нажми «Start» — в течение 10 минут:<br>
+        <a href="${esc(l.url)}" target="_blank" rel="noopener"><b>${esc(l.url)}</b></a><br>
+        <span class="muted">или отправь боту: <code>/start ${esc(l.code)}</code>. Потом обнови страницу.</span>`;
+    } catch (e) { toast(e.message); }
+  };
+  $("#tg-test").onclick = async () => {
+    try { const r = await api("POST", "/admin/telegram/test"); toast(r.failed.length ? `Не ушло: ${r.failed.join("; ")}` : `Отправлено: ${r.sent}`); }
+    catch (e) { toast(e.message); }
+  };
 };
 
 PAGES.system = async () => {

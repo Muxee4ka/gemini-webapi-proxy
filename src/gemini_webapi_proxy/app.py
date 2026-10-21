@@ -21,6 +21,7 @@ from gemini_webapi_proxy.routes import (
     health,
     images,
     models,
+    telegram,
     videos,
 )
 from gemini_webapi_proxy.stats import current, journal
@@ -81,6 +82,7 @@ for r in (
     accounts.ui_router,
     accounts.router,
     dashboard.router,
+    telegram.router,
 ):
     app.include_router(r)
 

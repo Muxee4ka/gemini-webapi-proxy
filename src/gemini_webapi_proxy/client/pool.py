@@ -35,6 +35,7 @@ from gemini_webapi_proxy.cookies.session_bootstrap import bootstrap_browser_cook
 from gemini_webapi_proxy.downloaders.image_export import sanitize_gemini_client_cookies
 from gemini_webapi_proxy.egress import egress
 from gemini_webapi_proxy.errors import NoAccountError, QuotaExceededError
+from gemini_webapi_proxy.events import emit
 from gemini_webapi_proxy.stats import journal, note_account
 
 logger = logging.getLogger(__name__)
@@ -143,6 +144,7 @@ class Slot:
         self._gate: asyncio.Semaphore | None = None
         self.next_start = 0.0  # monotonic
         self.active = 0
+        self.down = False  # an outage was reported: the next good init reports recovery
 
     def gate(self, settings: Settings) -> asyncio.Semaphore:
         if self._gate is None:
@@ -243,7 +245,11 @@ class Slot:
             except Exception as exc:
                 logger.warning("account %s: Gemini client init failed: %s", self.id, exc)
                 self.error, self.failed_at = str(exc)[:500], time.monotonic()
+                if not self.down and self.account.source == "stored":
+                    self.down = True
                 if isinstance(exc, TemporarilyBlockedError):
+                    emit("blocked", self.id, str(exc))
+                    self.down = True
                     # failed_at in the future: _retry_due() waits the longer pause
                     self.failed_at += _BLOCKED_RETRY_SECONDS - _UNAUTH_RETRY_SECONDS
                 if self.account.source == "stored" and "__Secure-1PSID" in str(exc):
@@ -260,6 +266,9 @@ class Slot:
                     pass
             if not _client_authenticated(client):
                 self.logged_out("the session is logged out (guest)")
+            elif self.down:
+                self.down = False
+                emit("recovered", self.id, getattr(self.account, "email", None) or "")
             registry.load_file()
             self._sync_models()
             return client
@@ -267,6 +276,8 @@ class Slot:
     def logged_out(self, why: str) -> None:
         logger.warning("account %s: %s", self.id, why)
         self.error = why
+        self.down = True
+        emit("logged_out", self.id, why)
         if self.account.source == "stored":
             self.needs_login = True
 
@@ -413,6 +424,7 @@ class AccountPool:
         while True:
             lease = await self.acquire(settings, model, exclude=tried, cooldown_key=key)
             if lease is None:
+                emit("all_down", None, self.summary() + (f" — {model}" if model else ""))
                 if last is not None:
                     raise last
                 raise NoAccountError(self.summary())
@@ -430,6 +442,11 @@ class AccountPool:
                     else _quota_reset(lease.client, settings.quota_cooldown)
                 )
                 slot.cooldowns[key] = until
+                emit(
+                    "quota",
+                    slot.id,
+                    f"{key} до {time.strftime('%d.%m %H:%M UTC', time.gmtime(until))}",
+                )
                 logger.warning(
                     "account %s: limit for %s until %s, trying the next account",
                     slot.id,
@@ -453,6 +470,8 @@ class AccountPool:
         if status is None or not slot.account.enabled:
             return status is not None
         logger.warning("account %s: flagged by Google (%s), switching it off", slot.id, status)
+        emit("abuse", slot.id, str(status))
+        slot.down = True
         slot.error = (
             f"Google flagged the account (abuse status {status}); switched off automatically"
         )
@@ -536,5 +555,12 @@ async def lifespan(app):  # type: ignore[no-untyped-def]
             # Cookie not yet configured, or Gemini is down.  The first real request
             # will retry (ensure() already logged why).
             pass
+    from gemini_webapi_proxy.telegram_bot import bot
+
+    try:
+        await bot.start(settings)
+    except Exception as exc:  # the proxy works without its bot
+        logger.warning("telegram bot: %s", exc)
     yield
+    await bot.stop()
     await close_client()

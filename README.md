@@ -105,6 +105,7 @@ client — without copy-pasting prompts into the web UI.
 - 🎬 **Video generation (Veo)** — OpenAI Videos API shape: `POST /openai/v1/videos` → job → mp4
 - 🍪 **Pluggable cookie sources** — desktop browser (Safari/Chrome/…), env vars, Netscape cookie file
 - 👥 **Several accounts + admin UI** — `/admin/ui`: state and limits per account, sign-in through the server's browser, automatic switch when an account runs out, a proxy per account, request journal, client keys, playground ([docs/accounts.md](docs/accounts.md))
+- 🤖 **Telegram bot** — account status and controls, alerts on logged-out / flagged / exhausted accounts ([docs/telegram.md](docs/telegram.md))
 - 🐳 **One-command install** — `scripts/install.sh` (Linux, macOS) / `scripts/install.ps1` (Windows): proxy + sign-in browser in Docker, keys generated, auto-restart
 - 🔌 **Multi-fallback image download** — httpx (RPC / preview URL) → gemini-webapi library save; no browser in the image
 - 🛡 **Upstream refusal detection** — Gemini "I cannot fulfill…" answers become errors (403 images / 502 chat), exhausted quota → 429
