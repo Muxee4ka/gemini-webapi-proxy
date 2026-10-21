@@ -166,7 +166,7 @@ def test_proxy_is_set_checked_masked_and_used_for_sign_in(client, monkeypatch):
 
     async def egress_check(proxy, cookies=None):
         checked.append(proxy)
-        return {"ip": "193.180.210.131", "country": "DK", "checked_at": 1.0, "proxy": proxy}
+        return {"ip": "203.0.113.10", "country": "NL", "checked_at": 1.0, "proxy": proxy}
 
     proxies: list = []
 
@@ -178,11 +178,11 @@ def test_proxy_is_set_checked_masked_and_used_for_sign_in(client, monkeypatch):
     monkeypatch.setattr(accounts, "open_sign_in", open_sign_in)
     c = _signed_in(client)
     assert c.post("/admin/accounts/default/proxy", json={"proxy": "ftp://x"}).status_code == 400
-    r = c.post("/admin/accounts/default/proxy", json={"proxy": "http://127.0.0.1:10812"}).json()
-    assert r["proxy"] == "http://127.0.0.1:10812" and r["egress"]["country"] == "DK"
+    r = c.post("/admin/accounts/default/proxy", json={"proxy": "http://127.0.0.1:8118"}).json()
+    assert r["proxy"] == "http://127.0.0.1:8118" and r["egress"]["country"] == "NL"
     assert r["proxy_set_at"]
     c.post("/admin/accounts/default/login/start")
-    assert proxies == ["http://127.0.0.1:10812"]
+    assert proxies == ["http://127.0.0.1:8118"]
     # A proxy with a login works for requests but is never shown back in full.
     store = AccountStore(get_settings().data_dir / "accounts.json")
     store.update("default", proxy="http://u:secret@1.2.3.4:8080")
@@ -202,8 +202,8 @@ def test_proxy_is_set_checked_masked_and_used_for_sign_in(client, monkeypatch):
 def test_sorry_redirect_names_the_address_google_saw():
     from gemini_webapi_proxy.routes.accounts import _sorry_ip
 
-    loc = "https://www.google.com/sorry/index?continue=https://gemini.google.com/app&q=EgRoHOmqGPD04tYGIjCHqmt3F72wtLA9SkHwGls27uTP"
-    assert _sorry_ip(loc) == "104.28.233.170"
+    loc = "https://www.google.com/sorry/index?continue=https://gemini.google.com/app&q=EgTLAHEHGAFzeW50aGV0aWMtdGVzdC10b2tlbg"
+    assert _sorry_ip(loc) == "203.0.113.7"
     assert _sorry_ip("") is None
 
 

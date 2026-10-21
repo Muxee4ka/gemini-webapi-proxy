@@ -156,7 +156,7 @@ async def test_open_sign_in_uses_a_fresh_context_with_the_account_proxy(
 
     browser = FakeBrowser(contexts=["ctx-old"])
     monkeypatch.setattr(cdp.websockets, "connect", lambda url, **kw: browser)
-    context = await cdp.open_sign_in("ws://x", "http://127.0.0.1:10812")
+    context = await cdp.open_sign_in("ws://x", "http://127.0.0.1:8118")
 
     assert context == "ctx-new"
     methods = [m["method"] for m in browser.sent]
@@ -167,7 +167,7 @@ async def test_open_sign_in_uses_a_fresh_context_with_the_account_proxy(
         "Target.createBrowserContext",
     ]
     created = browser.sent[3]["params"]
-    assert created == {"disposeOnDetach": False, "proxyServer": "http://127.0.0.1:10812"}
+    assert created == {"disposeOnDetach": False, "proxyServer": "http://127.0.0.1:8118"}
     target = next(m for m in browser.sent if m["method"] == "Target.createTarget")["params"]
     assert target == {"url": cdp.SIGN_IN_URL, "browserContextId": "ctx-new", "newWindow": True}
 
@@ -175,7 +175,7 @@ async def test_open_sign_in_uses_a_fresh_context_with_the_account_proxy(
 def test_chrome_proxy_cannot_carry_a_login():
     from gemini_webapi_proxy.cookies import cdp
 
-    assert cdp.chrome_proxy("socks5h://127.0.0.1:10811") == "socks5://127.0.0.1:10811"
+    assert cdp.chrome_proxy("socks5h://127.0.0.1:1080") == "socks5://127.0.0.1:1080"
     assert cdp.chrome_proxy(None) is None
     with pytest.raises(ValueError, match="login"):
         cdp.chrome_proxy("http://user:pass@1.2.3.4:8080")

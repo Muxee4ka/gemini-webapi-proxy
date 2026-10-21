@@ -239,7 +239,7 @@ async def test_calls_go_through_the_account_proxy_and_are_paced(accounts, monkey
 
     settings = get_settings().model_copy(update={"account_min_interval": 0.3})
     store = pool_module.pool.configure(settings)
-    store.update("free", proxy="http://127.0.0.1:10812")
+    store.update("free", proxy="http://127.0.0.1:8118")
     seen: list = []
 
     async def call(client, runtime):
@@ -250,8 +250,8 @@ async def test_calls_go_through_the_account_proxy_and_are_paced(accounts, monkey
     await pool_module.pool.run(settings, "gemini-flash", call)
     await pool_module.pool.run(settings, "gemini-pro", call)
     assert [s[:2] for s in seen] == [
-        ("free", "http://127.0.0.1:10812"),
-        ("free", "http://127.0.0.1:10812"),
+        ("free", "http://127.0.0.1:8118"),
+        ("free", "http://127.0.0.1:8118"),
         ("pro", None),
     ]
     assert seen[1][2] - seen[0][2] >= settings.account_min_interval - 0.05
@@ -278,9 +278,9 @@ def test_redirects_through_a_local_proxy_are_followed():
 
     for name in curl_compat._MODULES:
         assert importlib.import_module(name).AsyncSession is curl_compat.LocalProxySession
-    assert curl_compat.local_proxy("http://127.0.0.1:10812")
+    assert curl_compat.local_proxy("http://127.0.0.1:8118")
     assert curl_compat.local_proxy("socks5h://10.0.0.5:1080")
-    assert not curl_compat.local_proxy("http://193.180.210.131:3128")
+    assert not curl_compat.local_proxy("http://8.8.8.8:3128")
     assert not curl_compat.local_proxy(None)
 
     seen = {}
@@ -290,11 +290,11 @@ def test_redirects_through_a_local_proxy_are_followed():
             curl_compat.LocalProxySession.__init__(self, *args, **kwargs)
             seen[kwargs.get("proxy")] = self.allow_redirects
 
-    Probe(proxy="http://127.0.0.1:10812", allow_redirects=CurlFollow.SAFE)
-    Probe(proxy="http://193.180.210.131:3128", allow_redirects=CurlFollow.SAFE)
+    Probe(proxy="http://127.0.0.1:8118", allow_redirects=CurlFollow.SAFE)
+    Probe(proxy="http://8.8.8.8:3128", allow_redirects=CurlFollow.SAFE)
     Probe(proxy=None, allow_redirects=CurlFollow.SAFE)
-    assert seen["http://127.0.0.1:10812"] is True
-    assert seen["http://193.180.210.131:3128"] == CurlFollow.SAFE
+    assert seen["http://127.0.0.1:8118"] is True
+    assert seen["http://8.8.8.8:3128"] == CurlFollow.SAFE
     assert seen[None] == CurlFollow.SAFE
 
 

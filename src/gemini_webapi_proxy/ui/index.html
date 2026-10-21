@@ -894,7 +894,7 @@ view().addEventListener("click", (ev) => {
     case "rename": { const n = prompt("Новое имя", a.name); if (n) act(() => api("PATCH", path, { name: n })); return; }
     case "delete": if (confirm(`Удалить аккаунт «${a.name}»? Сессия в прокси будет забыта.`)) act(() => api("DELETE", path), "Удалён"); return;
     case "proxy": {
-      const v = prompt("Прокси для этого аккаунта (http://host:port или socks5://host:port).\nПусто — напрямую.\nНа innon: http://127.0.0.1:10812 — выход через webdock (DK).", a.proxy || "");
+      const v = prompt("Прокси для этого аккаунта (http://host:port или socks5://host:port).\nПусто — напрямую.\nНапример: http://127.0.0.1:8118 — локальный прокси с выходом на другой сервер.", a.proxy || "");
       if (v === null) return;
       return act(() => api("POST", `${path}/proxy`, { proxy: v }), "Прокси сохранён и проверен. Перелогинь аккаунт, чтобы вход тоже шёл через него.");
     }
