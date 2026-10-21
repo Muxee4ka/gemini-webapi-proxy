@@ -266,3 +266,33 @@ async def test_an_account_flagged_for_abuse_is_switched_off(accounts):
     assert await _who(settings, "gemini-flash") == "pro"
     assert free.account.enabled is False and "flagged" in free.error
     assert AccountStore(settings.data_dir / "accounts.json").get("free").enabled is False
+
+
+def test_redirects_through_a_local_proxy_are_followed():
+    """gemini-webapi's SAFE redirects reject everything behind a proxy on 127.0.0.1."""
+    import importlib
+
+    from curl_cffi import CurlFollow
+
+    from gemini_webapi_proxy.client import curl_compat
+
+    for name in curl_compat._MODULES:
+        assert importlib.import_module(name).AsyncSession is curl_compat.LocalProxySession
+    assert curl_compat.local_proxy("http://127.0.0.1:10812")
+    assert curl_compat.local_proxy("socks5h://10.0.0.5:1080")
+    assert not curl_compat.local_proxy("http://193.180.210.131:3128")
+    assert not curl_compat.local_proxy(None)
+
+    seen = {}
+
+    class Probe(curl_compat.LocalProxySession):
+        def __init__(self, *args, **kwargs):
+            curl_compat.LocalProxySession.__init__(self, *args, **kwargs)
+            seen[kwargs.get("proxy")] = self.allow_redirects
+
+    Probe(proxy="http://127.0.0.1:10812", allow_redirects=CurlFollow.SAFE)
+    Probe(proxy="http://193.180.210.131:3128", allow_redirects=CurlFollow.SAFE)
+    Probe(proxy=None, allow_redirects=CurlFollow.SAFE)
+    assert seen["http://127.0.0.1:10812"] is True
+    assert seen["http://193.180.210.131:3128"] == CurlFollow.SAFE
+    assert seen[None] == CurlFollow.SAFE

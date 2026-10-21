@@ -25,6 +25,7 @@ from gemini_webapi import GeminiClient
 from gemini_webapi.constants import AccountStatus
 from gemini_webapi.exceptions import AuthError, UsageLimitExceededError
 
+from gemini_webapi_proxy.client import curl_compat
 from gemini_webapi_proxy.client.accounts import ACCOUNTS_FILE, Account, AccountStore
 from gemini_webapi_proxy.client.quota import quota_report
 from gemini_webapi_proxy.client.registry import ModelRegistry
@@ -37,6 +38,7 @@ from gemini_webapi_proxy.errors import NoAccountError, QuotaExceededError
 from gemini_webapi_proxy.stats import journal, note_account
 
 logger = logging.getLogger(__name__)
+curl_compat.install()
 
 T = TypeVar("T")
 
