@@ -200,5 +200,5 @@ async def create_image_generation(
     finally:
         _remove_refs(ref_paths)
         note(images=len(data))
-    save_to_gallery(settings, [d.b64_json for d in data if d.b64_json], prompt=prompt)
+    note(gallery=save_to_gallery(settings, [d.b64_json for d in data if d.b64_json], prompt=prompt))
     return ImageGenerationResponse(created=int(time.time()), data=data)

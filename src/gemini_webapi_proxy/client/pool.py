@@ -106,6 +106,10 @@ async def _new_client(settings: Settings, account: Account) -> GeminiClient:
     # them (see cookies/cdp.py), so there is one rotation chain.
     await client.init(timeout=settings.init_timeout, auto_refresh=True)
     sanitize_gemini_client_cookies(client)
+    # The library drops a stream after 120 s of silence, even before the first byte
+    # (upstream #367); Google often takes longer than that to start answering (Pro,
+    # Argon, a busy queue).  The request's own timeout bounds the call instead.
+    client.watchdog_timeout = max(client.watchdog_timeout, settings.chat_timeout)
     return client
 
 

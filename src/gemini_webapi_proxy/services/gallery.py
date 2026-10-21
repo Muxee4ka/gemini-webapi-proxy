@@ -32,9 +32,11 @@ def _ext(data: bytes) -> str:
     return "jpg"
 
 
-def save_to_gallery(settings: Settings, images: list[str], *, prompt: str) -> None:
+def save_to_gallery(settings: Settings, images: list[str], *, prompt: str) -> list[str]:
+    """Keep a copy of the images; returns their gallery names."""
+    saved: list[str] = []
     if settings.image_keep_hours <= 0 or not images:
-        return
+        return saved
     folder = gallery_dir(settings)
     try:
         folder.mkdir(parents=True, exist_ok=True)
@@ -51,9 +53,11 @@ def save_to_gallery(settings: Settings, images: list[str], *, prompt: str) -> No
             name = f"{int(time.time())}-{uuid.uuid4().hex[:8]}"
             (folder / f"{name}.{_ext(data)}").write_bytes(data)
             (folder / f"{name}.json").write_text(json.dumps(meta, ensure_ascii=False))
+            saved.append(f"{name}.{_ext(data)}")
         prune(settings)
     except Exception as exc:  # the gallery must never break a generation
         log.warning("gallery: %s", exc)
+    return saved
 
 
 def entries(settings: Settings) -> list[dict]:

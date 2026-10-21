@@ -258,8 +258,15 @@ async def system() -> dict:
 
 
 # ---- Playground ----------------------------------------------------------------
+class PlaygroundTurn(BaseModel):
+    role: str  # user | assistant
+    content: str
+
+
 class PlaygroundIn(BaseModel):
     prompt: str
+    # Earlier turns of the playground chat; sent along so the model has the context.
+    history: list[PlaygroundTurn] = []
     model: str = "gemini-flash"
     mode: str = "chat"  # chat | image | video
     account: str | None = None  # None: whichever account the pool picks
@@ -293,14 +300,23 @@ async def playground(body: PlaygroundIn):
                 size=None,
                 response_format="b64_json",
             )
-            result = {"images": [d.b64_json for d in resp.data if d.b64_json], "text": ""}
+            gallery_names = record.get("gallery") or []
+            # Links into the gallery keep the playground history small; without a
+            # gallery (GOP_IMAGE_KEEP_HOURS=0) the images come inline.
+            inline = [] if gallery_names else [d.b64_json for d in resp.data if d.b64_json]
+            result = {"images": inline, "gallery": gallery_names, "text": ""}
         else:
+            turns = [ChatMessage(role=t.role, content=t.content) for t in body.history[-20:]]
             resp = await create_chat_completion(
                 settings,
                 model=body.model,
-                messages=[ChatMessage(role="user", content=body.prompt)],
+                messages=[*turns, ChatMessage(role="user", content=body.prompt)],
             )
-            result = {"text": resp.choices[0].message.get("content") or "", "images": []}
+            result = {
+                "text": resp.choices[0].message.get("content") or "",
+                "images": [],
+                "gallery": [],
+            }
         record["status"] = 200
         return {
             **result,

@@ -154,6 +154,24 @@ td.nowrap { white-space: nowrap; }
 video { width: 100%; border-radius: 8px; background: #000; display: block; }
 
 /* ---- playground ---- */
+.pg { display: grid; grid-template-columns: 230px 1fr; gap: 16px; align-items: start; }
+.pg-side { display: flex; flex-direction: column; gap: 10px; position: sticky; top: 16px; max-height: calc(100vh - 120px); }
+.pg-list { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; min-height: 0; flex: 1; }
+.pg-list a { display: block; padding: 7px 9px; border-radius: 8px; color: var(--fg2); text-decoration: none; }
+.pg-list a:hover { background: var(--hover); } .pg-list a.active { background: var(--chip); color: var(--fg); }
+.pg-list .t { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
+.pg-list .d { display: block; font-size: 11.5px; color: var(--muted); }
+.pg-main { display: flex; flex-direction: column; height: calc(100vh - 120px); min-height: 420px; padding: 0; }
+.pg-thread { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.msg { display: flex; flex-direction: column; max-width: 88%; }
+.msg.user { align-self: flex-end; align-items: flex-end; }
+.msg .bubble { padding: 9px 13px; border-radius: 12px; line-height: 1.55; word-break: break-word; }
+.msg.user .bubble { background: var(--accent); color: var(--accent-fg); white-space: pre-wrap; border-bottom-right-radius: 4px; }
+.msg.bot .bubble { background: var(--surface); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+.msg .meta { font-size: 11.5px; color: var(--muted); margin-top: 3px; padding: 0 4px; }
+.pg-compose { border-top: 1px solid var(--line); padding: 12px 16px; display: grid; gap: 8px; }
+.pg-input { display: flex; gap: 8px; align-items: flex-end; }
+.pg-input textarea { min-height: 44px; max-height: 220px; flex: 1; }
 .pg-form { display: grid; gap: 12px; }
 .pg-out { word-break: break-word; line-height: 1.6; }
 .pg-out.plain { white-space: pre-wrap; }
@@ -195,6 +213,7 @@ dialog h3 { margin: 0 0 8px; font-size: 15px; }
   .cols-2 { grid-template-columns: 1fr; }
 }
 @media (max-width: 760px) {
+  .pg { grid-template-columns: 1fr; } .pg-side { position: static; max-height: 220px; } .pg-main { height: 70vh; }
   .shell { grid-template-columns: 1fr; }
   aside { position: sticky; height: auto; flex-direction: row; overflow-x: auto; padding: 8px; gap: 2px; z-index: 5;
     border-right: 0; border-bottom: 1px solid var(--line); }
@@ -616,85 +635,156 @@ PAGES.models = async () => {
     <p class="muted small sec">Алиасы <code>gemini-2.5-*-image</code> ведут на модели аккаунта. Запрос идёт на первый по приоритету аккаунт, у которого модель есть.</p>`;
 };
 
+// ---- playground: chats kept in this browser (localStorage) ------------------
+const PG_KEY = "gop-playground-v1", PG_MAX_CHATS = 40;
+function pgLoad() {
+  try { const d = JSON.parse(localStorage.getItem(PG_KEY) || "null"); if (d && Array.isArray(d.chats)) return d; } catch {}
+  return { chats: [], current: null };
+}
+function pgSave() {
+  try { localStorage.setItem(PG_KEY, JSON.stringify(pgStore)); }
+  catch { pgStore.chats = pgStore.chats.slice(0, 10); try { localStorage.setItem(PG_KEY, JSON.stringify(pgStore)); } catch {} }
+}
+let pgStore = pgLoad(), pgBusy = false;
+function pgChat() {
+  let c = pgStore.chats.find((x) => x.id === pgStore.current);
+  if (!c) {
+    c = { id: Math.random().toString(36).slice(2, 10), title: "Новый чат", created: Date.now() / 1000, messages: [] };
+    pgStore.chats.unshift(c); pgStore.chats = pgStore.chats.slice(0, PG_MAX_CHATS); pgStore.current = c.id; pgSave();
+  }
+  return c;
+}
+function pgMessage(m) {
+  if (m.role === "user") {
+    return `<div class="msg user"><div class="bubble">${esc(m.content)}</div>
+      <div class="meta">${esc({ chat: "", image: "картинка · ", video: "видео · " }[m.mode] || "")}${esc(m.model || "")}${m.account ? " · " + esc(m.account) : ""}</div></div>`;
+  }
+  let body = "";
+  if (m.pending) body = `<span class="spinner"></span> <span class="muted" data-timer="${m.started}">${m.status || "думает"}…</span>`;
+  else if (m.error) body = `${status("ошибка", "critical")}<div class="err small" style="margin-top:6px">${esc(m.error)}</div>`;
+  else body = `<div class="md">${md(m.content || "")}</div>`;
+  const media = (m.gallery || []).map((n) => `<img class="pg-img" src="/admin/gallery/${encodeURIComponent(n)}" alt="" data-gallery="${esc(n)}">`).join("") +
+    (m.images || []).map((b) => `<img class="pg-img" src="data:image/jpeg;base64,${b}" alt="">`).join("") +
+    (m.video && m.videoDone ? `<video controls preload="metadata" src="/admin/videos/${esc(m.video)}/content"></video>` : "");
+  const meta = m.pending ? "" : [m.account && `аккаунт ${m.account}`, m.tried && m.tried.length > 1 && `переключения ${m.tried.join(" → ")}`,
+    m.ms != null && ms(m.ms)].filter(Boolean).join(" · ");
+  return `<div class="msg bot"><div class="bubble">${body}${media}</div>${meta ? `<div class="meta">${esc(meta)}
+    ${!m.error && m.content ? ` · <a href="#" data-copy="${esc(m.content)}">копировать</a>` : ""}</div>` : ""}</div>`;
+}
+function pgRenderThread() {
+  const c = pgChat(), box = $("#pg-thread");
+  if (!box) return;
+  box.innerHTML = c.messages.length ? c.messages.map(pgMessage).join("")
+    : `<div class="empty">Начни разговор. Чат помнит предыдущие сообщения этого диалога.<br><span class="small">Запросы тратят лимиты аккаунтов.</span></div>`;
+  box.scrollTop = box.scrollHeight;
+  box.querySelectorAll("[data-copy]").forEach((a) => (a.onclick = async (e) => {
+    e.preventDefault(); try { await navigator.clipboard.writeText(a.dataset.copy); toast("Скопировано"); } catch {}
+  }));
+}
+function pgRenderList() {
+  const list = $("#pg-list"); if (!list) return;
+  list.innerHTML = pgStore.chats.map((c) => `<a href="#" data-chat="${esc(c.id)}" class="${c.id === pgStore.current ? "active" : ""}">
+    <span class="t">${esc(c.title)}</span><span class="d">${esc(rel(c.updated || c.created))}</span></a>`).join("");
+  list.querySelectorAll("[data-chat]").forEach((a) => (a.onclick = (e) => {
+    e.preventDefault(); if (pgBusy) return; pgStore.current = a.dataset.chat; pgSave(); pgRenderList(); pgRenderThread(); pgSyncControls();
+  }));
+}
+function pgSyncControls() {
+  const c = pgChat();
+  if (c.model && $("#pg-model") && [...$("#pg-model").options].some((o) => o.value === c.model)) $("#pg-model").value = c.model;
+  if (c.account != null && $("#pg-account")) $("#pg-account").value = c.account;
+}
+
 PAGES.playground = async () => {
   const [m, acc] = await Promise.all([api("GET", "/admin/models"), api("GET", "/admin/accounts")]);
   const pg = state.pg;
   const models = m.models.filter((x) => (pg.mode === "image" ? x.image : x.chat));
-  const hint = { chat: "Сообщение", image: "Что нарисовать", video: "Что снять (видео делается несколько минут, дневной лимит маленький)" };
   if (!models.some((x) => x.id === pg.model)) pg.model = (models[0] || {}).id || "gemini-flash";
-  view().innerHTML = head("Песочница", "запрос через пул — тратит лимиты аккаунта") + `
-    <div class="grid cols-2" style="align-items:start">
-      <div class="card"><form class="pg-form" id="pg-form">
-        <div class="row"><div class="seg">
-          <button type="button" data-mode="chat" class="${pg.mode === "chat" ? "on" : ""}">Чат</button>
-          <button type="button" data-mode="image" class="${pg.mode === "image" ? "on" : ""}">Картинка</button>
-          <button type="button" data-mode="video" class="${pg.mode === "video" ? "on" : ""}">Видео</button></div></div>
-        <div class="row">
-          <label class="small muted">Модель</label>
-          <select id="pg-model">${models.map((x) => `<option ${x.id === pg.model ? "selected" : ""}>${esc(x.id)}</option>`).join("")}</select>
-          <label class="small muted">Аккаунт</label>
-          <select id="pg-account"><option value="">авто (как у клиентов)</option>${acc.accounts.map((a) =>
-            `<option value="${esc(a.id)}" ${pg.account === a.id ? "selected" : ""}>${esc(a.name)}</option>`).join("")}</select>
-        </div>
-        <textarea id="pg-prompt" placeholder="${hint[pg.mode]}">${esc(pg.prompt)}</textarea>
-        <div class="row"><button class="primary" id="pg-send">Отправить</button><span id="pg-timer" class="muted small"></span></div>
-      </form></div>
-      <div class="card" id="pg-result"><div class="empty">Ответ появится здесь</div></div>
+  const hint = { chat: "Сообщение (Enter — отправить, Shift+Enter — новая строка)", image: "Что нарисовать", video: "Что снять (несколько минут, дневной лимит маленький)" };
+  view().innerHTML = head("Песочница", "запросы через пул — тратят лимиты аккаунтов") + `
+    <div class="pg">
+      <div class="pg-side card">
+        <button class="primary" id="pg-new" style="width:100%">+ Новый чат</button>
+        <div class="pg-list" id="pg-list"></div>
+        <button class="sm ghost danger" id="pg-del" style="width:100%">Удалить этот чат</button>
+      </div>
+      <div class="pg-main card">
+        <div class="pg-thread" id="pg-thread"></div>
+        <form class="pg-compose" id="pg-form">
+          <div class="row">
+            <div class="seg">${["chat", "image", "video"].map((k) => `<button type="button" data-mode="${k}" class="${pg.mode === k ? "on" : ""}">${{ chat: "Чат", image: "Картинка", video: "Видео" }[k]}</button>`).join("")}</div>
+            <select id="pg-model">${models.map((x) => `<option ${x.id === pg.model ? "selected" : ""}>${esc(x.id)}</option>`).join("")}</select>
+            <select id="pg-account"><option value="">аккаунт: авто</option>${acc.accounts.map((a) =>
+              `<option value="${esc(a.id)}" ${pg.account === a.id ? "selected" : ""}>${esc(a.name)}</option>`).join("")}</select>
+          </div>
+          <div class="pg-input"><textarea id="pg-prompt" rows="2" placeholder="${hint[pg.mode]}">${esc(pg.prompt)}</textarea>
+            <button class="primary" id="pg-send">Отправить</button></div>
+        </form>
+      </div>
     </div>`;
+  pgRenderList(); pgRenderThread();
   view().querySelectorAll("[data-mode]").forEach((b) => (b.onclick = () => { pg.mode = b.dataset.mode; pg.prompt = $("#pg-prompt").value; render(); }));
-  $("#pg-form").onsubmit = async (e) => {
-    e.preventDefault();
-    Object.assign(pg, { model: $("#pg-model").value, account: $("#pg-account").value, prompt: $("#pg-prompt").value });
-    if (!pg.prompt.trim()) return;
-    const btn = $("#pg-send"), t0 = Date.now();
-    btn.disabled = true; busy = true;
-    const timer = setInterval(() => ($("#pg-timer").innerHTML = `<span class="spinner"></span> ${((Date.now() - t0) / 1000).toFixed(0)} с`), 500);
-    try {
-      const r = await api("POST", "/admin/playground", { mode: pg.mode, model: pg.model, account: pg.account || null, prompt: pg.prompt });
-      if (r.video) { await followVideo(r.video.id, t0); return; }
-      $("#pg-result").innerHTML = `<div class="row small fg2" style="margin-bottom:10px">${status("готово", "good")}
-          <span>аккаунт: <b>${esc(r.account || "—")}</b></span>${r.tried.length > 1 ? `<span>переключения: ${esc(r.tried.join(" → "))}</span>` : ""}
-          <span>${esc(r.model || "")}</span><span class="sp"></span><span>${ms(r.ms)}</span></div>
-        <div class="row" style="justify-content:flex-end;margin:-4px 0 6px"><div class="seg">
-          <button class="sm on" data-view="md">Markdown</button><button class="sm" data-view="raw">Текст</button></div></div>
-        <div class="pg-out md" id="pg-text">${md(r.text)}</div>
-        ${r.images.map((b) => `<img class="pg-img" src="data:image/jpeg;base64,${b}" alt="">`).join("")}`;
-      $("#pg-result").querySelectorAll("[data-view]").forEach((b) => (b.onclick = () => {
-        $("#pg-result").querySelectorAll("[data-view]").forEach((x) => x.classList.toggle("on", x === b));
-        const box = $("#pg-text");
-        box.className = b.dataset.view === "md" ? "pg-out md" : "pg-out plain";
-        box.innerHTML = b.dataset.view === "md" ? md(r.text) : esc(r.text);
-      }));
-    } catch (err) {
-      $("#pg-result").innerHTML = `<div class="row" style="margin-bottom:8px">${status("ошибка", "critical")}</div><div class="err">${esc(err.message)}</div>`;
-    } finally {
-      clearInterval(timer); $("#pg-timer").textContent = ""; btn.disabled = false; busy = false;
-    }
+  $("#pg-new").onclick = () => { if (pgBusy) return; pgStore.current = null; pgChat(); pgRenderList(); pgRenderThread(); };
+  $("#pg-del").onclick = () => {
+    if (pgBusy || !confirm("Удалить этот чат из истории браузера?")) return;
+    pgStore.chats = pgStore.chats.filter((c) => c.id !== pgStore.current); pgStore.current = (pgStore.chats[0] || {}).id || null;
+    pgSave(); pgRenderList(); pgRenderThread();
   };
+  $("#pg-prompt").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("#pg-form").requestSubmit(); }
+  });
+  $("#pg-form").onsubmit = (e) => { e.preventDefault(); pgSend(); };
+  $("#pg-prompt").focus();
 };
 
-async function followVideo(id, t0) {
-  // Video jobs run in the background for minutes: poll the job, then show the player.
-  const vstat = { queued: "в очереди", in_progress: "рендерится" };
+async function pgSend() {
+  const pg = state.pg, prompt = $("#pg-prompt").value.trim();
+  if (!prompt || pgBusy) return;
+  Object.assign(pg, { model: $("#pg-model").value, account: $("#pg-account").value, prompt: "" });
+  const chat = pgChat();
+  // Earlier text turns are the context; image/video turns are not sent back.
+  const history = chat.messages.filter((m) => (m.mode || "chat") === "chat" && !m.error && !m.pending && m.content)
+    .map((m) => ({ role: m.role, content: m.content }));
+  chat.messages.push({ role: "user", content: prompt, mode: pg.mode, model: pg.model, account: pg.account || "" });
+  const reply = { role: "assistant", mode: pg.mode, pending: true, started: Date.now() };
+  chat.messages.push(reply);
+  if (chat.title === "Новый чат") chat.title = prompt.slice(0, 48);
+  Object.assign(chat, { model: pg.model, account: pg.account, updated: Date.now() / 1000 });
+  $("#pg-prompt").value = ""; pgBusy = busy = true; $("#pg-send").disabled = true;
+  pgSave(); pgRenderList(); pgRenderThread();
+  const tick = setInterval(() => document.querySelectorAll("[data-timer]").forEach((el) =>
+    (el.textContent = `${el.textContent.split(" ·")[0].replace(/…$/, "")} · ${Math.round((Date.now() - +el.dataset.timer) / 1000)} с…`)), 1000);
+  try {
+    const r = await api("POST", "/admin/playground", { mode: pg.mode, model: pg.model, account: pg.account || null, prompt, history });
+    if (r.video) {
+      Object.assign(reply, { video: r.video.id, status: "видео в очереди", model: r.model });
+      pgSave(); pgRenderThread();
+      await followVideo(r.video.id, reply);
+    } else {
+      Object.assign(reply, { pending: false, content: r.text, gallery: r.gallery || [], images: r.images || [],
+        account: r.account, tried: r.tried, ms: r.ms, model: r.model });
+    }
+  } catch (err) {
+    Object.assign(reply, { pending: false, error: err.message, ms: Date.now() - reply.started });
+  } finally {
+    clearInterval(tick); pgBusy = busy = false;
+    chat.updated = Date.now() / 1000; pgSave();
+    if ($("#pg-send")) { $("#pg-send").disabled = false; pgRenderList(); pgRenderThread(); $("#pg-prompt").focus(); }
+  }
+}
+
+async function followVideo(id, reply) {
+  // Video jobs run in the background for minutes: poll the job and update the message.
+  const label = { queued: "видео в очереди", in_progress: "видео рендерится" };
   while (true) {
-    const j = ((await api("GET", "/admin/videos")).videos || []).find((x) => x.id === id);
-    const box = $("#pg-result");
-    if (!box) return;  // left the tab: the job keeps running, see Media
-    if (!j) { box.innerHTML = `<div class="err">Задача ${esc(id)} пропала</div>`; return; }
-    const head = `<div class="row small fg2" style="margin-bottom:10px">%S<span>аккаунт: <b>${esc(j.account || "—")}</b></span>
-      <span>${esc(j.model)}</span><span class="sp"></span><span>${ms(Date.now() - t0)}</span></div>`;
-    if (j.status === "completed") {
-      box.innerHTML = head.replace("%S", status("готово", "good")) + (j.has_file
-        ? `<video controls autoplay src="/admin/videos/${esc(j.id)}/content"></video>` : `<div class="muted">Файл не сохранился</div>`);
-      return;
-    }
-    if (j.status === "failed") {
-      box.innerHTML = head.replace("%S", status("ошибка", "critical")) +
-        `<div class="err">${esc((j.error && j.error.message) || "")}</div><div class="muted small">${esc((j.error && j.error.code) || "")}</div>`;
-      return;
-    }
-    box.innerHTML = head.replace("%S", `<span class="spinner"></span> ${esc(vstat[j.status] || j.status)}`) +
-      `<div class="muted small">Можно уйти со страницы — задача продолжится, ролик появится в «Медиа».</div>`;
+    let j;
+    try { j = ((await api("GET", "/admin/videos")).videos || []).find((x) => x.id === id); } catch { j = null; }
+    if (!j) { Object.assign(reply, { pending: false, error: `Задача ${id} пропала` }); return; }
+    reply.account = j.account;
+    if (j.status === "completed") { Object.assign(reply, { pending: false, videoDone: j.has_file, content: j.has_file ? "" : "Файл не сохранился", ms: Date.now() - reply.started }); return; }
+    if (j.status === "failed") { Object.assign(reply, { pending: false, error: ((j.error && j.error.message) || "ошибка") + (j.error ? ` (${j.error.code})` : ""), ms: Date.now() - reply.started }); return; }
+    reply.status = label[j.status] || j.status; pgSave();
+    if ($("#pg-thread")) pgRenderThread();
     await new Promise((r) => setTimeout(r, 5000));
   }
 }

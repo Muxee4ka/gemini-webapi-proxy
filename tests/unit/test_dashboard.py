@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import time
+from typing import ClassVar
 
 import pytest
 from fastapi.testclient import TestClient
@@ -115,8 +116,12 @@ class FakeClient:
     def list_models(self):
         return [ModelDescriptor(name="gemini-flash", display_name="Flash", description="")]
 
+    prompts: ClassVar[list] = []
+
     async def generate_content(self, prompt, files=None, model=None, **kw):
         from types import SimpleNamespace
+
+        FakeClient.prompts.append(prompt)
 
         return SimpleNamespace(text=f"answer from {self.account_id}", images=[])
 
@@ -243,3 +248,25 @@ def test_playground_video_job_runs_on_the_pinned_account(app_client):
     assert job["status"] == "failed" and job["account"] == "b" and job["key"] == "admin-ui"
     rows = app_client.get("/admin/requests?endpoint=video-job", headers=AUTH).json()["requests"]
     assert rows[0]["account"] == "b" and rows[0]["video"] == job_id
+
+
+def test_playground_sends_the_chat_history(app_client):
+    FakeClient.prompts.clear()
+    r = app_client.post(
+        "/admin/playground",
+        headers=AUTH,
+        json={
+            "prompt": "and in Danish?",
+            "history": [
+                {"role": "user", "content": "say hi"},
+                {"role": "assistant", "content": "hi"},
+            ],
+        },
+    ).json()
+    assert r["text"].startswith("answer from") and r["gallery"] == []
+    prompt = FakeClient.prompts[-1]
+    assert (
+        prompt.index("USER: say hi")
+        < prompt.index("ASSISTANT: hi")
+        < prompt.index("USER: and in Danish?")
+    )
