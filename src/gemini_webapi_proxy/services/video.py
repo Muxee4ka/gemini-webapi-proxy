@@ -35,6 +35,7 @@ from gemini_webapi_proxy.client.pool import pool, registry
 from gemini_webapi_proxy.config import Settings
 from gemini_webapi_proxy.downloaders.image_export import sanitize_gemini_client_cookies
 from gemini_webapi_proxy.errors import QuotaExceededError
+from gemini_webapi_proxy.stats import current, journal
 from gemini_webapi_proxy.utils.media import materialize_reference_images
 
 log = logging.getLogger("gemini_webapi_proxy.video")
@@ -67,6 +68,7 @@ class VideoJob:
     error: dict[str, str] | None = None
     text: str = ""
     account: str | None = None
+    key: str | None = None  # client key that queued it, for the request journal
 
     def to_openai(self) -> dict[str, Any]:
         return {
@@ -162,6 +164,7 @@ def create_job(
         seconds=seconds,
         size=size,
         references=references or [],
+        key=(current.get() or {}).get("key"),
     )
     _jobs[job.id] = job
     task = asyncio.get_running_loop().create_task(run_job(settings, job))
@@ -178,6 +181,25 @@ class _UnfinishedError(Exception):
 
 
 async def run_job(settings: Settings, job: VideoJob) -> None:
+    record = {"ts": time.time(), "endpoint": "video-job", "model": job.model, "key": job.key}
+    token = current.set(record)
+    try:
+        await _run_job(settings, job)
+    finally:
+        current.reset(token)
+        record["video"] = job.id
+        record["status"] = (
+            200
+            if job.status == "completed"
+            else (429 if (job.error or {}).get("code") == ERROR_CODES["limit"] else 502)
+        )
+        record["ms"] = round((time.time() - record["ts"]) * 1000)
+        if job.error:
+            record["error"] = job.error.get("message", "")[:300]
+        journal.add(record)
+
+
+async def _run_job(settings: Settings, job: VideoJob) -> None:
     async with _lock:
         job.status = "in_progress"
         ref_paths: list[Path] = []

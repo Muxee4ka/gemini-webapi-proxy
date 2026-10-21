@@ -17,6 +17,7 @@ import logging
 import time
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any, TypeVar
 
@@ -32,6 +33,7 @@ from gemini_webapi_proxy.cookies import CookieBundle, build_source
 from gemini_webapi_proxy.cookies.session_bootstrap import bootstrap_browser_cookie_session
 from gemini_webapi_proxy.downloaders.image_export import sanitize_gemini_client_cookies
 from gemini_webapi_proxy.errors import NoAccountError, QuotaExceededError
+from gemini_webapi_proxy.stats import journal, note_account
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +48,8 @@ registry = ModelRegistry()
 signing_in: str | None = None
 signing_in_since = 0.0
 SIGN_IN_SECONDS = 15 * 60
+# Set by the admin playground: serve the request on this account only.
+pinned: ContextVar[str | None] = ContextVar("gop_pinned_account", default=None)
 
 
 def current_sign_in() -> str | None:
@@ -326,8 +330,11 @@ class AccountPool:
         """
         self.configure(settings)
         key = cooldown_key or model or ""
+        only = pinned.get()
         fallback: Lease | None = None
         for slot in self.ordered():
+            if only is not None and slot.id != only:
+                continue
             if not slot.account.enabled or slot.id in exclude or slot.cooling(key):
                 continue
             client = await slot.ensure(settings)
@@ -366,6 +373,7 @@ class AccountPool:
                 raise NoAccountError(self.summary())
             slot = lease.slot
             tried.add(slot.id)
+            note_account(slot.id)
             slot.requests += 1
             slot.last_used = time.time()
             try:
@@ -459,6 +467,7 @@ async def close_client() -> None:
 async def lifespan(app):  # type: ignore[no-untyped-def]
     settings = get_settings()
     registry.load_file()
+    journal.open(settings.data_dir)
     pool.configure(settings)
     # Bring the accounts up during startup so the model registry is populated before
     # the first /openai/v1/models request.

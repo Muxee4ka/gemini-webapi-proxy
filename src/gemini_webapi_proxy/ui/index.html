@@ -3,91 +3,221 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Gemini Proxy · аккаунты</title>
+<title>Gemini Proxy</title>
 <style>
 :root {
-  --bg: #f6f7f9; --card: #fff; --fg: #1b1f24; --muted: #667085; --line: #e3e6ea;
-  --accent: #2f6fed; --ok: #1a7f37; --warn: #b26a00; --bad: #c62828; --chip: #eef1f5;
+  color-scheme: light;
+  --page: #f6f7f9; --surface: #fcfcfb; --card: #ffffff; --fg: #0b0b0b; --fg2: #52514e; --muted: #898781;
+  --line: #e3e3de; --grid: #e1e0d9; --axis: #c3c2b7; --chip: #efefeb; --hover: #f1f1ed;
+  --accent: #2a78d6; --accent-fg: #fff; --series-1: #2a78d6;
+  --good: #0ca30c; --good-ink: #006300; --warning: #fab219; --warning-ink: #8a5a00; --serious: #ec835a; --critical: #d03b3b;
+  --ring: rgba(11,11,11,.10); --shadow: 0 1px 2px rgba(0,0,0,.04);
 }
 @media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #111418; --card: #1a1e24; --fg: #e6e8eb; --muted: #9aa4b2; --line: #2a3038;
-    --accent: #6b9bff; --ok: #4cc26a; --warn: #f0a840; --bad: #ff6b6b; --chip: #232931;
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --card: #161615; --fg: #f0efec; --fg2: #c3c2b7; --muted: #898781;
+    --line: #2a2a28; --grid: #2c2c2a; --axis: #383835; --chip: #232321; --hover: #1f1f1d;
+    --accent: #3987e5; --series-1: #3987e5; --good-ink: #0ca30c; --warning-ink: #fab219;
+    --ring: rgba(255,255,255,.10); --shadow: none;
   }
 }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --card: #161615; --fg: #f0efec; --fg2: #c3c2b7; --muted: #898781;
+  --line: #2a2a28; --grid: #2c2c2a; --axis: #383835; --chip: #232321; --hover: #1f1f1d;
+  --accent: #3987e5; --series-1: #3987e5; --good-ink: #0ca30c; --warning-ink: #fab219;
+  --ring: rgba(255,255,255,.10); --shadow: none;
+}
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--fg);
-  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-header { display: flex; align-items: center; gap: 12px; padding: 14px 20px;
-  border-bottom: 1px solid var(--line); background: var(--card); position: sticky; top: 0; z-index: 2; }
-header h1 { font-size: 16px; margin: 0; font-weight: 600; }
-header .sp { flex: 1; }
-main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; }
+html, body { margin: 0; }
+body { background: var(--page); color: var(--fg);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif; }
+a { color: var(--accent); }
+code, .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12.5px; }
 button { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--fg);
-  border-radius: 8px; padding: 6px 12px; cursor: pointer; }
-button:hover { border-color: var(--accent); }
-button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-button.danger { color: var(--bad); }
+  border-radius: 8px; padding: 6px 12px; cursor: pointer; white-space: nowrap; }
+button:hover:not(:disabled) { border-color: var(--accent); }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+button.ghost { border-color: transparent; background: transparent; }
+button.danger { color: var(--critical); }
+button.sm { padding: 3px 9px; font-size: 13px; }
 button:disabled { opacity: .5; cursor: default; }
-input { font: inherit; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line);
-  background: var(--bg); color: var(--fg); }
+input, select, textarea { font: inherit; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--surface); color: var(--fg); min-width: 0; }
+textarea { width: 100%; resize: vertical; min-height: 110px; }
+
+/* ---- shell ---- */
+.shell { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+aside { border-right: 1px solid var(--line); background: var(--card); padding: 16px 10px; position: sticky; top: 0;
+  height: 100vh; display: flex; flex-direction: column; gap: 4px; }
+.brand { font-weight: 700; font-size: 15px; padding: 4px 10px 14px; display: flex; align-items: center; gap: 8px; }
+.brand svg { width: 20px; height: 20px; }
+nav a { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; color: var(--fg2);
+  text-decoration: none; }
+nav a svg { width: 16px; height: 16px; flex: none; }
+nav a:hover { background: var(--hover); color: var(--fg); }
+nav a.active { background: var(--chip); color: var(--fg); font-weight: 600; }
+nav .count { margin-left: auto; font-size: 12px; color: var(--muted); }
+.aside-foot { margin-top: auto; display: flex; gap: 6px; padding: 0 4px; }
+main { padding: 24px 28px 60px; max-width: 1240px; width: 100%; }
+.page-head { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+.page-head h1 { font-size: 20px; margin: 0; }
+.page-head .sub { color: var(--muted); }
+.sp { flex: 1; }
+
+/* ---- building blocks ---- */
 .grid { display: grid; gap: 16px; }
-.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; box-shadow: var(--shadow);
+  min-width: 0; }
+.card h2 { font-size: 14px; margin: 0 0 12px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .card.off { opacity: .6; }
 .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.title { font-size: 15px; font-weight: 600; }
-.muted { color: var(--muted); }
-.small { font-size: 12px; }
-.badge { padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600;
-  background: var(--chip); }
-.badge.ok { color: var(--ok); } .badge.warn { color: var(--warn); } .badge.bad { color: var(--bad); }
+.muted { color: var(--muted); } .fg2 { color: var(--fg2); } .small { font-size: 12.5px; }
+.chip { display: inline-flex; align-items: center; gap: 4px; background: var(--chip); border-radius: 6px; padding: 1px 8px;
+  font-size: 12px; color: var(--fg2); }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.chip { background: var(--chip); border-radius: 6px; padding: 1px 8px; font-size: 12px; }
-.quota { display: grid; grid-template-columns: minmax(140px, 220px) 1fr auto; gap: 6px 12px;
-  align-items: center; margin-top: 10px; }
-.bar { height: 8px; background: var(--chip); border-radius: 4px; overflow: hidden; }
-.bar > div { height: 100%; background: var(--ok); }
-.bar.low > div { background: var(--warn); } .bar.empty > div { background: var(--bad); }
-.actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-.err { color: var(--bad); white-space: pre-wrap; word-break: break-word; margin-top: 8px; }
+.status { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600; color: var(--fg2);
+  white-space: nowrap; }
+.status i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: var(--muted); }
+.status.good i { background: var(--good); } .status.warning i { background: var(--warning); }
+.status.serious i { background: var(--serious); } .status.critical i { background: var(--critical); }
+.err { color: var(--critical); white-space: pre-wrap; word-break: break-word; }
+.empty { color: var(--muted); padding: 24px; text-align: center; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; padding: 5px 12px; }
+.seg button.on { background: var(--chip); font-weight: 600; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; font-size: 13px; }
+.kv dt { color: var(--muted); } .kv dd { margin: 0; word-break: break-all; }
+
+/* ---- KPI tiles ---- */
+.tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.tile { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+.tile .label { color: var(--muted); font-size: 12.5px; }
+.tile .value { font-size: 26px; font-weight: 650; letter-spacing: -.01em; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.tile .hint { color: var(--fg2); font-size: 12.5px; margin-top: 2px; }
+
+/* ---- charts ---- */
+.chart { position: relative; width: 100%; }
+.chart svg { display: block; width: 100%; overflow: visible; }
+.chart .gridline { stroke: var(--grid); stroke-width: 1; }
+.chart .baseline { stroke: var(--axis); stroke-width: 1; }
+.chart text { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.chart .hit { fill: transparent; }
+.chart .hit:hover + g rect, .chart g.hover rect { opacity: .85; }
+.legend { display: flex; gap: 14px; font-size: 12.5px; color: var(--fg2); margin-bottom: 8px; flex-wrap: wrap; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+#tip { position: fixed; pointer-events: none; z-index: 20; background: var(--card); color: var(--fg); border: 1px solid var(--line);
+  border-radius: 8px; padding: 7px 10px; font-size: 12.5px; box-shadow: 0 4px 16px rgba(0,0,0,.15); display: none;
+  font-variant-numeric: tabular-nums; max-width: 320px; }
+.hbar { display: grid; grid-template-columns: minmax(90px, 180px) 1fr 64px; gap: 6px 12px; align-items: center; font-size: 13px; }
+.hbar .track { height: 10px; border-radius: 4px; position: relative; }
+.hbar .fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 0 4px 4px 0; background: var(--series-1); }
+.hbar .num { text-align: right; font-variant-numeric: tabular-nums; color: var(--fg2); }
+.meter { height: 8px; background: var(--chip); border-radius: 4px; overflow: hidden; }
+.meter > div { height: 100%; border-radius: 0 4px 4px 0; background: var(--good); }
+.meter.warning > div { background: var(--warning); } .meter.critical > div { background: var(--critical); }
+.meters { display: grid; grid-template-columns: minmax(110px, 200px) 1fr minmax(150px, auto); gap: 8px 12px;
+  align-items: center; font-size: 13px; }
+
+/* ---- tables ---- */
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; color: var(--muted); font-weight: 500; padding: 9px 12px; border-bottom: 1px solid var(--line);
+  white-space: nowrap; background: var(--card); position: sticky; top: 0; }
+td { padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+tbody tr.clickable { cursor: pointer; } tbody tr.clickable:hover td { background: var(--hover); }
+td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.nowrap { white-space: nowrap; }
+.detail td { background: var(--surface); }
+.detail pre { margin: 0; white-space: pre-wrap; word-break: break-all; font-size: 12px; }
+.filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; align-items: center; }
+.yes { color: var(--good-ink); font-weight: 700; } .no { color: var(--muted); }
+
+/* ---- accounts ---- */
+.acc-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.acc-head .name { font-size: 15px; font-weight: 600; }
+.acc-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.acc-meta { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 10px; color: var(--fg2); font-size: 12.5px; }
 .sec { margin-top: 12px; }
-dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--fg);
-  padding: 16px; max-width: min(96vw, 1340px); width: 100%; }
+
+/* ---- media ---- */
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.gallery figure { margin: 0; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: var(--surface);
+  cursor: zoom-in; }
+.gallery img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
+.gallery figcaption { padding: 6px 8px; font-size: 12px; color: var(--fg2); white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; }
+.videos { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+video { width: 100%; border-radius: 8px; background: #000; display: block; }
+
+/* ---- playground ---- */
+.pg-form { display: grid; gap: 12px; }
+.pg-out { white-space: pre-wrap; word-break: break-word; line-height: 1.55; }
+.pg-out img { max-width: 100%; border-radius: 8px; margin-top: 8px; }
+.spinner { width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%;
+  display: inline-block; animation: spin .8s linear infinite; vertical-align: -2px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---- dialogs ---- */
+dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--fg); padding: 16px;
+  width: min(96vw, 560px); }
+dialog.wide { width: min(96vw, 1340px); }
 dialog::backdrop { background: rgba(0,0,0,.5); }
-dialog iframe { width: 100%; height: min(72vh, 900px); border: 1px solid var(--line); border-radius: 8px;
-  background: #000; }
-#login-screen { max-width: 340px; margin: 12vh auto; }
-#toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--fg);
-  color: var(--bg); padding: 8px 14px; border-radius: 8px; display: none; max-width: 90vw; z-index: 5; }
-@media (max-width: 640px) {
-  .quota { grid-template-columns: 1fr auto; }
-  .quota .bar { grid-column: 1 / -1; }
+dialog iframe { width: 100%; height: min(72vh, 900px); border: 1px solid var(--line); border-radius: 8px; background: #000; }
+dialog h3 { margin: 0 0 8px; font-size: 15px; }
+.lightbox img { max-width: 100%; max-height: 70vh; display: block; margin: 0 auto; border-radius: 8px; }
+.secret { display: flex; gap: 8px; } .secret input { flex: 1; font-family: ui-monospace, Menlo, monospace; }
+
+#login-screen { max-width: 360px; margin: 14vh auto; }
+#toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--fg); color: var(--page);
+  padding: 8px 14px; border-radius: 8px; display: none; max-width: 90vw; z-index: 30; }
+
+@media (max-width: 1000px) {
+  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cols-2 { grid-template-columns: 1fr; }
+}
+@media (max-width: 760px) {
+  .shell { grid-template-columns: 1fr; }
+  aside { position: sticky; height: auto; flex-direction: row; overflow-x: auto; padding: 8px; gap: 2px; z-index: 5;
+    border-right: 0; border-bottom: 1px solid var(--line); }
+  .brand, .aside-foot, nav .count { display: none; }
+  nav { display: flex; gap: 2px; }
+  nav a { padding: 6px 10px; white-space: nowrap; }
+  main { padding: 16px; }
+  .meters { grid-template-columns: 1fr auto; } .meters .meter { grid-column: 1 / -1; }
+  .hbar { grid-template-columns: 1fr 56px; } .hbar .track { grid-column: 1 / -1; grid-row: auto; }
 }
 </style>
 </head>
 <body>
-<header>
-  <h1>Gemini Proxy</h1><span class="muted small" id="summary"></span>
-  <span class="sp"></span>
-  <button id="add-btn" hidden>+ Аккаунт</button>
-  <button id="logout-btn" hidden>Выйти</button>
-</header>
+<div id="login-screen" class="card" hidden>
+  <h2>Gemini Proxy — вход</h2>
+  <form id="login-form" class="grid">
+    <input type="password" id="password" placeholder="Пароль (GOP_ADMIN_PASSWORD или API key)" autofocus>
+    <button class="primary">Войти</button>
+  </form>
+</div>
 
-<main>
-  <div id="login-screen" class="card" hidden>
-    <div class="title">Вход в админку</div>
-    <form id="login-form" class="sec grid">
-      <input type="password" id="password" placeholder="Пароль (GOP_ADMIN_PASSWORD или API key)" autofocus>
-      <button class="primary">Войти</button>
-    </form>
-  </div>
-  <div id="accounts" class="grid"></div>
-</main>
+<div class="shell" id="app" hidden>
+  <aside>
+    <div class="brand"><svg viewBox="0 0 24 24" fill="none"><path d="M12 2c.6 5.4 4.6 9.4 10 10-5.4.6-9.4 4.6-10 10-.6-5.4-4.6-9.4-10-10 5.4-.6 9.4-4.6 10-10Z" fill="var(--accent)"/></svg>Gemini Proxy</div>
+    <nav id="nav"></nav>
+    <div class="aside-foot">
+      <button class="ghost sm" id="theme-btn" title="Тема">◐</button>
+      <span class="sp"></span>
+      <button class="ghost sm" id="logout-btn">Выйти</button>
+    </div>
+  </aside>
+  <main id="view"></main>
+</div>
 
-<dialog id="signin">
+<dialog id="signin" class="wide">
   <div class="row">
-    <div class="title">Вход в Google: <span id="signin-name"></span></div>
-    <span class="sp" style="flex:1"></span>
+    <h3 style="margin:0">Вход в Google: <span id="signin-name"></span></h3>
+    <span class="sp"></span>
     <button id="signin-cancel">Отмена</button>
     <button class="primary" id="signin-finish">Готово — забрать сессию</button>
   </div>
@@ -97,242 +227,553 @@ dialog iframe { width: 100%; height: min(72vh, 900px); border: 1px solid var(--l
 </dialog>
 
 <dialog id="cookies-dlg">
-  <div class="title">Cookies для <span id="cookies-name"></span></div>
-  <p class="muted small">Строка вида <code>__Secure-1PSID=…; __Secure-1PSIDTS=…; …</code> из браузера, где выполнен вход в gemini.google.com.
+  <h3>Cookies для <span id="cookies-name"></span></h3>
+  <p class="muted small">Строка <code>__Secure-1PSID=…; __Secure-1PSIDTS=…; …</code> из браузера, где выполнен вход в gemini.google.com.
     Сессия с другого устройства живёт меньше, чем созданная на сервере.</p>
   <form id="cookies-form" class="grid">
     <input id="cookies-input" placeholder="__Secure-1PSID=...; __Secure-1PSIDTS=...">
-    <div class="row"><button type="button" id="cookies-cancel">Отмена</button>
-      <button class="primary">Сохранить</button></div>
+    <div class="row"><span class="sp"></span><button type="button" data-close>Отмена</button><button class="primary">Сохранить</button></div>
   </form>
 </dialog>
 
+<dialog id="secret-dlg">
+  <h3>Ключ «<span id="secret-name"></span>» создан</h3>
+  <p class="small fg2">Скопируй сейчас — второй раз его не показать: прокси хранит только хеш.</p>
+  <div class="secret"><input id="secret-value" readonly><button class="primary" id="secret-copy">Копировать</button></div>
+  <div class="row sec"><span class="sp"></span><button data-close>Готово</button></div>
+</dialog>
+
+<dialog id="lightbox" class="wide lightbox">
+  <div class="row" style="margin-bottom:10px"><span id="lb-meta" class="small fg2"></span><span class="sp"></span>
+    <a id="lb-open" target="_blank" rel="noopener"><button class="sm">Открыть</button></a>
+    <button class="sm danger" id="lb-delete">Удалить</button><button class="sm" data-close>Закрыть</button></div>
+  <img id="lb-img" alt="">
+  <p id="lb-prompt" class="small fg2" style="white-space:pre-wrap"></p>
+</dialog>
+
+<div id="tip"></div>
 <div id="toast"></div>
 
 <script>
-const $ = (s) => document.querySelector(s);
-const STATE = {
-  ok: ["работает", "ok"], idle: ["не запущен", ""], disabled: ["выключен", ""],
-  needs_login: ["нужен вход", "bad"], logged_out: ["разлогинен", "bad"], error: ["ошибка", "warn"],
+"use strict";
+const $ = (s, el = document) => el.querySelector(s);
+const ICON = {
+  overview: '<path d="M3 13h8V3H3zm10 8h8V11h-8zM3 21h8v-6H3zm10-18v6h8V3z"/>',
+  accounts: '<path d="M16 11a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm-8 0a3 3 0 1 0-3-3 3 3 0 0 0 3 3Zm0 2c-2.7 0-6 1.3-6 3.5V19h6v-2.5c0-1.2.6-2.3 1.7-3.2A9 9 0 0 0 8 13Zm8 0c-3 0-7 1.5-7 4v2h14v-2c0-2.5-4-4-7-4Z"/>',
+  requests: '<path d="M4 5h16v2H4zm0 6h16v2H4zm0 6h10v2H4z"/>',
+  keys: '<path d="M7 14a5 5 0 1 1 4.6-7H22v4h-2v3h-3v-3h-5.4A5 5 0 0 1 7 14Zm0-3a2 2 0 1 0-2-2 2 2 0 0 0 2 2Z"/>',
+  models: '<path d="M12 2 3 7v10l9 5 9-5V7Zm0 2.3L18.6 8 12 11.7 5.4 8ZM5 9.7l6 3.3v6.6l-6-3.3Zm8 9.9V13l6-3.3v6.6Z"/>',
+  playground: '<path d="m12 2 2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4Z"/>',
+  media: '<path d="M4 4h16a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Zm1 12 4-5 3 4 2-2 5 5V6H5Zm11-7a1.5 1.5 0 1 0-1.5-1.5A1.5 1.5 0 0 0 16 9Z"/>',
+  system: '<path d="M19.4 13a7.5 7.5 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-1.7-1L15 3.5h-4L10.6 6a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7.5 7.5 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.4 7.4 0 0 0 1.7-1l2.4 1 2-3.4ZM13 15.5A3.5 3.5 0 1 1 16.5 12 3.5 3.5 0 0 1 13 15.5Z" transform="translate(-1 0)"/>',
 };
-let data = { accounts: [] }, busy = false, cookiesFor = null, signinFor = null;
+const TABS = [
+  ["overview", "Обзор"], ["accounts", "Аккаунты"], ["requests", "Запросы"], ["keys", "Ключи"],
+  ["models", "Модели"], ["playground", "Песочница"], ["media", "Медиа"], ["system", "Система"],
+];
+const ACC_STATE = {
+  ok: ["работает", "good"], idle: ["не запущен", ""], disabled: ["выключен", ""],
+  needs_login: ["нужен вход", "critical"], logged_out: ["разлогинен", "critical"], error: ["ошибка", "serious"],
+};
+const ENDPOINT = { chat: "чат", image: "картинка", edit: "правка", video: "видео", "video-job": "видео (задача)",
+  "playground-chat": "песочница", "playground-image": "песочница · картинка" };
 
+let accountsData = { accounts: [] }, busy = false, cookiesFor = null, signinFor = null, current = null, lightboxName = null;
+const state = { hours: 24, filters: {}, open: null, pg: { mode: "chat", model: "gemini-flash", account: "", prompt: "" } };
+
+// ---- helpers ---------------------------------------------------------------
 function toast(msg) {
   const t = $("#toast"); t.textContent = msg; t.style.display = "block";
-  clearTimeout(toast.t); toast.t = setTimeout(() => (t.style.display = "none"), 4000);
+  clearTimeout(toast.t); toast.t = setTimeout(() => (t.style.display = "none"), 4500);
 }
-
 async function api(method, path, body) {
-  const r = await fetch(path, {
-    method, credentials: "same-origin",
-    headers: body ? { "Content-Type": "application/json" } : {},
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const r = await fetch(path, { method, credentials: "same-origin",
+    headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
   if (r.status === 401) { showLogin(); throw new Error("Нужен вход"); }
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.detail || (j.error && j.error.message) || r.statusText);
   return j;
 }
-
-function esc(s) {
-  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-}
-
-function when(ts) {
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const num = (n) => (n ?? 0).toLocaleString("ru-RU");
+const ms = (v) => v == null ? "—" : v < 1000 ? `${Math.round(v)} мс` : `${(v / 1000).toFixed(v < 10000 ? 1 : 0)} с`;
+const bytes = (b) => b == null ? "—" : b > 1e9 ? `${(b / 1e9).toFixed(1)} ГБ` : b > 1e6 ? `${(b / 1e6).toFixed(1)} МБ` : `${Math.round(b / 1e3)} КБ`;
+function rel(ts) {
   if (!ts) return "—";
-  const d = typeof ts === "number" ? new Date(ts * 1000) : new Date(ts);
+  const d = typeof ts === "number" ? ts * 1000 : Date.parse(ts);
   const diff = (d - Date.now()) / 1000, a = Math.abs(diff);
-  const rel = a < 90 ? `${Math.round(a)} с` : a < 5400 ? `${Math.round(a / 60)} мин` :
-    a < 129600 ? `${Math.round(a / 3600)} ч` : `${Math.round(a / 86400)} д`;
-  const abs = d.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-  return `${abs} (${diff >= 0 ? "через " + rel : rel + " назад"})`;
+  const r = a < 60 ? `${Math.round(a)} с` : a < 5400 ? `${Math.round(a / 60)} мин` : a < 129600 ? `${Math.round(a / 3600)} ч` : `${Math.round(a / 86400)} д`;
+  return diff >= 0 ? `через ${r}` : `${r} назад`;
+}
+function clock(ts, withDate) {
+  if (!ts) return "—";
+  const d = new Date(typeof ts === "number" ? ts * 1000 : ts);
+  return d.toLocaleString("ru-RU", withDate ? { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }
+    : { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+const when = (ts) => ts ? `${clock(ts, true)} · ${rel(ts)}` : "—";
+const status = (label, kind) => `<span class="status ${kind || ""}"><i></i>${esc(label)}</span>`;
+const okStatus = (code) => code < 400 ? status(code, "good") : code === 429 ? status(code, "warning") : status(code || "—", "critical");
+const view = () => $("#view");
+function head(title, sub, extra = "") {
+  return `<div class="page-head"><h1>${title}</h1>${sub ? `<span class="sub">${sub}</span>` : ""}<span class="sp"></span>${extra}</div>`;
 }
 
-function bar(remaining, total, pct) {
-  let frac = null;
-  if (typeof remaining === "number" && typeof total === "number" && total > 0) frac = remaining / total;
-  else if (typeof pct === "number") frac = 1 - pct / 100;
-  if (frac === null) return `<div class="bar"></div>`;
-  const cls = frac <= 0 ? "empty" : frac < 0.2 ? "low" : "";
-  return `<div class="bar ${cls}"><div style="width:${Math.max(0, Math.min(1, frac)) * 100}%"></div></div>`;
-}
+const tip = $("#tip");
+document.addEventListener("mouseover", (e) => {
+  const el = e.target.closest("[data-tip]");
+  if (!el) { tip.style.display = "none"; return; }
+  tip.innerHTML = el.dataset.tip; tip.style.display = "block";
+});
+document.addEventListener("mousemove", (e) => {
+  if (tip.style.display !== "block") return;
+  const w = tip.offsetWidth, x = e.clientX + 14 + w > innerWidth ? e.clientX - w - 14 : e.clientX + 14;
+  tip.style.left = `${x}px`; tip.style.top = `${e.clientY + 14}px`;
+});
 
-function quotaBlock(a) {
-  const q = a.quota;
-  if (!q) return `<div class="sec muted small">Лимиты появятся после запуска клиента.</div>`;
+// ---- charts ----------------------------------------------------------------
+function niceMax(v) {
+  if (v <= 4) return 4;
+  const p = 10 ** Math.floor(Math.log10(v)), n = v / p;
+  return (n <= 2 ? 2 : n <= 5 ? 5 : 10) * p;
+}
+function hourlyChart(buckets, hours) {
+  // Fold hourly buckets into at most 48 bars.
+  const per = Math.max(1, Math.ceil(buckets.length / 48)), bars = [];
+  for (let i = 0; i < buckets.length; i += per) {
+    const g = buckets.slice(i, i + per);
+    bars.push({ ts: g[0].ts, end: g[g.length - 1].ts + 3600, ok: g.reduce((s, b) => s + b.ok, 0), error: g.reduce((s, b) => s + b.error, 0) });
+  }
+  const W = Math.max(320, (view().clientWidth || 900) - 70), H = 180, left = 34, top = 8, bottom = 22;
+  const plotW = W - left, plotH = H - top - bottom;
+  const max = niceMax(Math.max(1, ...bars.map((b) => b.ok + b.error)));
+  const step = plotW / bars.length, bw = Math.max(2, Math.min(28, step - 3));
+  const y = (v) => top + plotH - (v / max) * plotH;
+  let g = "";
+  for (let i = 0; i <= 4; i++) {
+    const v = (max / 4) * i, yy = y(v);
+    g += `<line class="${i ? "gridline" : "baseline"}" x1="${left}" x2="${W}" y1="${yy}" y2="${yy}"/>`;
+    g += `<text x="${left - 6}" y="${yy + 4}" text-anchor="end">${num(v)}</text>`;
+  }
+  const labelEvery = Math.ceil(bars.length / 8);
+  bars.forEach((b, i) => {
+    const x = left + i * step + (step - bw) / 2, total = b.ok + b.error;
+    const label = hours > 48 ? clock(b.ts, true) : clock(b.ts, false).slice(0, 5);
+    const tipText = `<b>${esc(clock(b.ts, true))}–${esc(clock(b.end, false).slice(0, 5))}</b><br>успешно: ${num(b.ok)}<br>ошибок: ${num(b.error)}`;
+    let segs = "";
+    if (total) {
+      // ok at the bottom, errors on top; 2px surface gap between, rounded data end only.
+      const okH = (b.ok / max) * plotH, errH = (b.error / max) * plotH, gap = b.ok && b.error ? 2 : 0;
+      if (b.ok) segs += roundedTop(x, y(b.ok), bw, okH, !b.error, "var(--good)");
+      if (b.error) segs += roundedTop(x, y(total), bw, errH - gap, true, "var(--critical)");
+    }
+    g += `<rect class="hit" x="${left + i * step}" y="${top}" width="${step}" height="${plotH}" data-tip="${esc(tipText)}"/>${segs}`;
+    if (i % labelEvery === 0) g += `<text x="${x + bw / 2}" y="${H - 6}" text-anchor="middle">${esc(label)}</text>`;
+  });
+  return `<div class="legend"><span><i style="background:var(--good)"></i>успешно</span><span><i style="background:var(--critical)"></i>ошибки</span></div>
+    <div class="chart"><svg viewBox="0 0 ${W} ${H}" height="${H}" role="img" aria-label="Запросы по времени">${g}</svg></div>`;
+}
+function roundedTop(x, yTop, w, h, round, fill) {
+  if (h <= 0) return "";
+  const r = round ? Math.min(4, w / 2, h) : 0;
+  const d = `M${x},${yTop + h} V${yTop + r} Q${x},${yTop} ${x + r},${yTop} H${x + w - r} Q${x + w},${yTop} ${x + w},${yTop + r} V${yTop + h} Z`;
+  return `<path d="${d}" fill="${fill}" style="pointer-events:none"/>`;
+}
+function hbars(rows, total) {
+  if (!rows.length) return `<div class="empty">Пока пусто</div>`;
+  const max = Math.max(...rows.map((r) => r.requests));
+  return `<div class="hbar">${rows.map((r) => `
+    <div class="nowrap" style="overflow:hidden;text-overflow:ellipsis">${esc(r.name)}</div>
+    <div class="track" data-tip="<b>${esc(r.name)}</b><br>запросов: ${num(r.requests)}<br>ошибок: ${num(r.errors)}">
+      <div class="fill" style="width:${(r.requests / max) * 100}%"></div></div>
+    <div class="num">${num(r.requests)}${r.errors ? ` <span class="small" style="color:var(--critical)">·${num(r.errors)}</span>` : ""}</div>`).join("")}</div>`;
+}
+function meter(pct, label, right) {
+  const p = Math.max(0, Math.min(100, pct ?? 0)), cls = p >= 90 ? "critical" : p >= 70 ? "warning" : "";
+  return `<div>${esc(label)}</div><div class="meter ${cls}" data-tip="${esc(label)}: использовано ${p}%"><div style="width:${p}%"></div></div>
+    <div class="small fg2">${right}</div>`;
+}
+function quotaMeters(q) {
+  if (!q) return `<div class="muted small">Лимиты появятся после запуска клиента.</div>`;
   let rows = "";
   for (const m of q.models || []) {
-    const left = typeof m.remaining === "number" ? `${m.remaining}${m.total ? " / " + m.total : ""}` : "—";
-    rows += `<div>${esc(m.label)}</div>${bar(m.remaining, m.total, m.usage_percentage)}
-      <div class="small muted">${left} · сброс ${when(m.reset_at)}</div>`;
+    const used = m.usage_percentage ?? (m.total ? Math.round(100 - (m.remaining / m.total) * 100) : null);
+    rows += meter(used, m.label.replace(/ \[.*\]$/, ""), `${num(m.remaining)} / ${num(m.total)} · сброс ${rel(m.reset_at)}`);
   }
   for (const [k, name] of [["current_5h", "Окно 5 ч"], ["weekly", "Неделя"]]) {
     const u = (q.usage || {})[k];
-    if (!u) continue;
-    rows += `<div>${name}</div>${bar(null, null, u.usage_percentage)}
-      <div class="small muted">${u.usage_percentage ?? "?"}% · сброс ${when(u.reset_at)}</div>`;
+    if (u) rows += meter(u.usage_percentage, name, `${u.usage_percentage ?? "?"}% · сброс ${rel(u.reset_at)}`);
   }
-  const abuse = q.abuse_status && q.abuse_status.is_clean === false
-    ? `<span class="badge bad">abuse: ${esc(JSON.stringify(q.abuse_status))}</span>` : "";
-  return `<div class="row sec small">
-      <span class="muted">Тариф:</span> <b>${esc(q.tier || "—")}</b>
-      <span class="muted">Статус Google:</span> ${esc(q.account_status || "—")} ${abuse}
-    </div>
-    ${rows ? `<div class="quota">${rows}</div>` : `<div class="sec muted small">Google не сообщил лимиты.</div>`}`;
+  return rows ? `<div class="meters">${rows}</div>` : `<div class="muted small">Google не сообщил лимиты.</div>`;
 }
 
-function card(a, i, n) {
-  const [label, cls] = STATE[a.state] || [a.state, ""];
-  const cds = Object.entries(a.cooldowns || {});
-  const signing = data.signing_in === a.id;
+// ---- pages -----------------------------------------------------------------
+const PAGES = {};
+
+PAGES.overview = async () => {
+  const [st, acc] = await Promise.all([api("GET", `/admin/stats?hours=${state.hours}`), api("GET", "/admin/accounts")]);
+  accountsData = acc;
+  const t = st.totals, okAcc = acc.accounts.filter((a) => a.state === "ok").length;
+  const rate = t.requests ? Math.round((t.ok / t.requests) * 1000) / 10 : null;
+  const recentErr = await api("GET", "/admin/requests?limit=6&outcome=error");
+  const periods = [[24, "24 ч"], [72, "3 дня"], [168, "7 дней"]];
+  view().innerHTML = head("Обзор", "", `<div class="seg">${periods.map(([h, l]) =>
+      `<button data-hours="${h}" class="${state.hours === h ? "on" : ""}">${l}</button>`).join("")}</div>`) + `
+    <div class="tiles">
+      <div class="tile"><div class="label">Запросов</div><div class="value">${num(t.requests)}</div><div class="hint">за ${periods.find((p) => p[0] === state.hours)[1]}</div></div>
+      <div class="tile"><div class="label">Успешно</div><div class="value">${rate == null ? "—" : rate + "%"}</div><div class="hint">${num(t.ok)} из ${num(t.requests)}</div></div>
+      <div class="tile"><div class="label">Ошибок</div><div class="value">${num(t.errors)}</div><div class="hint">из них лимит (429): ${num(t.limited)}</div></div>
+      <div class="tile"><div class="label">Время ответа</div><div class="value">${ms(t.p50_ms)}</div><div class="hint">медиана · p95 ${ms(t.p95_ms)}</div></div>
+      <div class="tile"><div class="label">Аккаунты</div><div class="value">${okAcc} / ${acc.accounts.length}</div><div class="hint">${okAcc === acc.accounts.length ? "все работают" : "есть проблемы"}</div></div>
+    </div>
+    <div class="card sec"><h2>Запросы по времени</h2>${hourlyChart(st.hourly, state.hours)}</div>
+    <div class="grid cols-2 sec">
+      <div class="card"><h2>Модели</h2>${hbars(st.models.slice(0, 8))}</div>
+      <div class="card"><h2>Клиенты (ключи)</h2>${hbars(st.keys.slice(0, 8))}</div>
+    </div>
+    <div class="grid cols-2 sec">
+      <div class="card"><h2>Лимиты аккаунтов</h2>${acc.accounts.map((a) => `
+        <div class="sec"><div class="row" style="margin-bottom:6px"><b>${esc(a.name)}</b>
+          ${status(...(ACC_STATE[a.state] || [a.state, ""]))}<span class="muted small">${esc(a.quota?.tier || "")}</span></div>
+          ${quotaMeters(a.quota)}</div>`).join("") || `<div class="empty">Аккаунтов нет</div>`}</div>
+      <div class="card"><h2>Последние ошибки</h2>${recentErr.requests.length ? `<div class="grid" style="gap:10px">${recentErr.requests.map((r) => `
+        <div><div class="row small">${okStatus(r.status)}<span class="fg2">${esc(ENDPOINT[r.endpoint] || r.endpoint)} · ${esc(r.model || "—")} · ${esc(r.account || "—")}</span>
+          <span class="sp"></span><span class="muted">${rel(r.ts)}</span></div>
+          <div class="small err">${esc((r.error || "").slice(0, 220))}</div></div>`).join("")}</div>` : `<div class="empty">Ошибок нет</div>`}</div>
+    </div>`;
+  view().querySelectorAll("[data-hours]").forEach((b) => (b.onclick = () => { state.hours = +b.dataset.hours; render(); }));
+};
+
+PAGES.accounts = async () => {
+  accountsData = await api("GET", "/admin/accounts");
+  const list = accountsData.accounts, ok = list.filter((a) => a.state === "ok").length;
+  view().innerHTML = head("Аккаунты", `${ok} из ${list.length} работают`, `<button class="primary" id="add-btn">+ Аккаунт</button>`) +
+    `<div class="grid">${list.map((a, i) => accountCard(a, i, list.length)).join("") || `<div class="card empty">Аккаунтов нет. Добавь первый.</div>`}</div>`;
+  $("#add-btn").onclick = addAccount;
+};
+function accountCard(a, i, n) {
+  const [label, cls] = ACC_STATE[a.state] || [a.state, ""];
+  const cds = Object.entries(a.cooldowns || {}), q = a.quota;
+  const abuse = q && q.abuse_status && q.abuse_status.is_clean === false;
   return `<div class="card ${a.enabled ? "" : "off"}" data-id="${esc(a.id)}">
-    <div class="row">
-      <span class="title">${esc(a.name)}</span>
-      <span class="muted small">${esc(a.email || a.id)}</span>
-      <span class="badge ${cls}">${label}</span>
+    <div class="acc-head">
+      <span class="name">${esc(a.name)}</span><span class="muted small">${esc(a.email || a.id)}</span>
+      ${status(label, cls)}
+      ${q?.tier ? `<span class="chip">${esc(q.tier)}</span>` : ""}
+      ${abuse ? status("abuse-флаг", "critical") : ""}
       ${a.source === "settings" ? `<span class="chip" title="Cookies берутся из GOP_COOKIE_SOURCE">из настроек</span>` : ""}
-      ${signing ? `<span class="badge warn">идёт вход</span>` : ""}
-      <span style="flex:1"></span>
-      <span class="muted small">приоритет ${a.priority}</span>
-      <button data-act="up" ${i === 0 ? "disabled" : ""} title="Выше">↑</button>
-      <button data-act="down" ${i === n - 1 ? "disabled" : ""} title="Ниже">↓</button>
+      ${accountsData.signing_in === a.id ? status("идёт вход", "warning") : ""}
+      <span class="sp"></span><span class="muted small">приоритет ${a.priority}</span>
+      <button class="sm" data-act="up" ${i === 0 ? "disabled" : ""} title="Выше">↑</button>
+      <button class="sm" data-act="down" ${i === n - 1 ? "disabled" : ""} title="Ниже">↓</button>
     </div>
-    <div class="row sec small muted">
-      <span>запросов: ${a.requests}</span><span>последний: ${when(a.last_used)}</span>
-      <span>вход: ${when(a.signed_in_at)}</span>
-    </div>
+    <div class="acc-meta"><span>запросов: ${num(a.requests)}</span><span>последний: ${rel(a.last_used)}</span><span>вход: ${when(a.signed_in_at)}</span></div>
     ${a.models.length ? `<div class="chips sec">${a.models.map((m) => `<span class="chip">${esc(m)}</span>`).join("")}</div>` : ""}
-    ${cds.length ? `<div class="sec row small"><span class="badge warn">лимит</span>
-      ${cds.map(([k, t]) => `<span>${esc(k)} до ${when(t)}</span>`).join(" · ")}
-      <button data-act="cooldowns">Сбросить</button></div>` : ""}
-    ${quotaBlock(a)}
-    ${a.error ? `<div class="err small">${esc(a.error)}</div>` : ""}
-    <div class="actions">
+    ${cds.length ? `<div class="sec row small">${status("лимит", "warning")}${cds.map(([k, t]) => `<span>${esc(k)} до ${esc(clock(t, true))} (${rel(t)})</span>`).join(" · ")}
+      <button class="sm" data-act="cooldowns">Сбросить</button></div>` : ""}
+    <div class="sec">${quotaMeters(q)}</div>
+    ${a.error ? `<div class="err small sec">${esc(a.error)}</div>` : ""}
+    <div class="acc-actions">
       <button class="primary" data-act="signin">${a.state === "ok" ? "Перелогинить" : "Войти"}</button>
       <button data-act="cookies">Вставить cookies</button>
       <button data-act="check" title="Переподключиться к Google и перечитать лимиты">Проверить</button>
       <button data-act="toggle">${a.enabled ? "Выключить" : "Включить"}</button>
       <button data-act="rename">Переименовать</button>
       <button class="danger" data-act="delete">Удалить</button>
+    </div></div>`;
+}
+
+PAGES.requests = async () => {
+  const [st, rq] = await Promise.all([
+    api("GET", "/admin/stats?hours=336"),
+    api("GET", "/admin/requests?limit=300&" + new URLSearchParams(Object.entries(state.filters).filter(([, v]) => v))),
+  ]);
+  const sel = (key, label, rows, names = {}) => `<select data-filter="${key}"><option value="">${label}: все</option>${rows.map((r) =>
+    `<option value="${esc(r.name)}" ${state.filters[key] === r.name ? "selected" : ""}>${esc(names[r.name] || r.name)}</option>`).join("")}</select>`;
+  view().innerHTML = head("Запросы", "журнал без текстов промптов, только размеры") + `
+    <div class="filters">
+      ${sel("endpoint", "Тип", st.endpoints, ENDPOINT)}${sel("model", "Модель", st.models)}
+      ${sel("account", "Аккаунт", st.accounts)}${sel("key", "Ключ", st.keys)}
+      <select data-filter="outcome"><option value="">Итог: все</option>
+        <option value="ok" ${state.filters.outcome === "ok" ? "selected" : ""}>успешно</option>
+        <option value="error" ${state.filters.outcome === "error" ? "selected" : ""}>ошибки</option></select>
+      ${Object.values(state.filters).some(Boolean) ? `<button class="sm ghost" id="clear-f">Сбросить</button>` : ""}
+      <span class="sp"></span><span class="muted small">${rq.requests.length} записей</span>
     </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Время</th><th>Тип</th><th>Модель</th><th>Аккаунт</th><th>Ключ</th><th>Итог</th><th style="text-align:right">Длит.</th><th style="text-align:right">Объём</th><th>Ошибка</th></tr></thead>
+      <tbody>${rq.requests.map((r, i) => requestRow(r, i)).join("") || `<tr><td colspan="9" class="empty">Записей нет</td></tr>`}</tbody>
+    </table></div>`;
+  view().querySelectorAll("[data-filter]").forEach((s) => (s.onchange = () => { state.filters[s.dataset.filter] = s.value; render(); }));
+  const c = $("#clear-f"); if (c) c.onclick = () => { state.filters = {}; render(); };
+  view().querySelectorAll("tr.clickable").forEach((tr) => (tr.onclick = () => {
+    const next = tr.nextElementSibling;
+    if (next && next.classList.contains("detail")) { next.remove(); return; }
+    const d = document.createElement("tr"); d.className = "detail";
+    d.innerHTML = `<td colspan="9"><pre>${esc(JSON.stringify(rq.requests[+tr.dataset.i], null, 2))}</pre></td>`;
+    tr.after(d);
+  }));
+};
+function requestRow(r, i) {
+  const size = r.endpoint === "chat" || r.endpoint === "playground-chat"
+    ? (r.prompt_chars != null ? `${num(r.prompt_chars)} → ${num(r.answer_chars)}` : "")
+    : r.images != null ? `${r.images} изобр.` : r.video ? "видео" : "";
+  const chain = (r.tried || []).length > 1 ? `<span class="muted" title="Переключения">${esc(r.tried.join(" → "))}</span>` : esc(r.account || "—");
+  const extra = [r.stream ? "stream" : "", r.tools ? `tools ${r.tools}` : "", r.tool_calls ? `вызовов ${r.tool_calls}` : ""].filter(Boolean);
+  return `<tr class="clickable" data-i="${i}">
+    <td class="nowrap" title="${esc(new Date(r.ts * 1000).toLocaleString("ru-RU"))}">${esc(clock(r.ts, true))}</td>
+    <td class="nowrap">${esc(ENDPOINT[r.endpoint] || r.endpoint)}${extra.length ? ` <span class="muted small">${esc(extra.join(", "))}</span>` : ""}</td>
+    <td class="nowrap">${esc(r.model || "—")}</td><td class="nowrap">${chain}</td><td class="nowrap">${esc(r.key || "—")}</td>
+    <td>${okStatus(r.status)}</td><td class="num">${ms(r.ms)}</td><td class="num">${size}</td>
+    <td class="small err" style="max-width:320px">${esc((r.error || "").slice(0, 140))}</td></tr>`;
+}
+
+PAGES.keys = async () => {
+  const k = await api("GET", "/admin/keys");
+  view().innerHTML = head("Ключи", "отдельный ключ на клиента — видно, кто сколько тратит", `<button class="primary" id="new-key">+ Ключ</button>`) + `
+    <div class="table-wrap"><table>
+      <thead><tr><th>Имя</th><th>Ключ</th><th>Создан</th><th style="text-align:right">Запросов</th><th>Последний</th><th>Статус</th><th></th></tr></thead>
+      <tbody>
+        <tr><td><b>master</b></td><td class="mono muted">GOP_API_KEY</td><td class="muted">из .env</td><td class="num">${num(k.master.requests)}</td>
+          <td class="nowrap">${rel(k.master.last_used)}</td><td>${k.master.set ? status("активен", "good") : status("не задан", "")}</td><td></td></tr>
+        ${k.keys.map((x) => `<tr data-key="${esc(x.id)}">
+          <td><b>${esc(x.name)}</b></td><td class="mono">${esc(x.prefix)}…</td><td class="nowrap">${esc(clock(x.created_at, true))}</td>
+          <td class="num">${num(x.requests)}</td><td class="nowrap">${rel(x.last_used)}</td>
+          <td>${x.enabled ? status("активен", "good") : status("отключён", "")}</td>
+          <td class="nowrap"><button class="sm" data-kact="toggle">${x.enabled ? "Отключить" : "Включить"}</button>
+            <button class="sm" data-kact="rename">Переименовать</button><button class="sm danger" data-kact="delete">Удалить</button></td></tr>`).join("")}
+      </tbody></table></div>
+    <p class="muted small sec">Клиент передаёт ключ как обычно: <code>Authorization: Bearer &lt;ключ&gt;</code>. Мастер-ключ продолжает работать.</p>`;
+  $("#new-key").onclick = () => {
+    const name = prompt("Имя клиента (например, openclaw)");
+    if (name) act(async () => {
+      const r = await api("POST", "/admin/keys", { name });
+      $("#secret-name").textContent = r.name; $("#secret-value").value = r.secret; $("#secret-dlg").showModal();
+    });
+  };
+  view().querySelectorAll("[data-kact]").forEach((b) => (b.onclick = () => {
+    const id = b.closest("tr").dataset.key, x = k.keys.find((y) => y.id === id);
+    if (b.dataset.kact === "toggle") act(() => api("PATCH", `/admin/keys/${id}`, { enabled: !x.enabled }));
+    if (b.dataset.kact === "rename") { const n = prompt("Новое имя", x.name); if (n) act(() => api("PATCH", `/admin/keys/${id}`, { name: n })); }
+    if (b.dataset.kact === "delete" && confirm(`Удалить ключ «${x.name}»? Клиент с ним получит 403.`)) act(() => api("DELETE", `/admin/keys/${id}`), "Удалён");
+  }));
+};
+
+PAGES.models = async () => {
+  const m = await api("GET", "/admin/models");
+  const acc = (await api("GET", "/admin/accounts")).accounts;
+  const name = (id) => (acc.find((a) => a.id === id) || {}).name || id;
+  view().innerHTML = head("Модели", "что доступно на каком аккаунте") + `
+    <div class="table-wrap"><table>
+      <thead><tr><th>Модель</th><th>Назначение</th>${m.accounts.map((a) => `<th style="text-align:center">${esc(name(a))}</th>`).join("")}</tr></thead>
+      <tbody>${m.models.map((x) => `<tr>
+        <td><b class="mono">${esc(x.id)}</b><div class="small muted">${esc(x.name)}${x.aliases.length ? ` · → ${esc(x.aliases.join(", "))}` : ""}</div></td>
+        <td><div class="chips">${x.chat ? `<span class="chip">чат</span>` : ""}${x.image ? `<span class="chip">картинки</span>` : ""}</div></td>
+        ${m.accounts.map((a) => `<td style="text-align:center">${x.accounts[a] ? `<span class="yes" title="есть">✓</span>` : `<span class="no" title="нет">—</span>`}</td>`).join("")}
+      </tr>`).join("") || `<tr><td colspan="9" class="empty">Реестр пуст — запустите хотя бы один аккаунт</td></tr>`}</tbody>
+    </table></div>
+    <p class="muted small sec">Алиасы <code>gemini-2.5-*-image</code> ведут на модели аккаунта. Запрос идёт на первый по приоритету аккаунт, у которого модель есть.</p>`;
+};
+
+PAGES.playground = async () => {
+  const [m, acc] = await Promise.all([api("GET", "/admin/models"), api("GET", "/admin/accounts")]);
+  const pg = state.pg;
+  const models = m.models.filter((x) => (pg.mode === "image" ? x.image : x.chat));
+  if (!models.some((x) => x.id === pg.model)) pg.model = (models[0] || {}).id || "gemini-flash";
+  view().innerHTML = head("Песочница", "запрос через пул — тратит лимиты аккаунта") + `
+    <div class="grid cols-2" style="align-items:start">
+      <div class="card"><form class="pg-form" id="pg-form">
+        <div class="row"><div class="seg">
+          <button type="button" data-mode="chat" class="${pg.mode === "chat" ? "on" : ""}">Чат</button>
+          <button type="button" data-mode="image" class="${pg.mode === "image" ? "on" : ""}">Картинка</button></div></div>
+        <div class="row">
+          <label class="small muted">Модель</label>
+          <select id="pg-model">${models.map((x) => `<option ${x.id === pg.model ? "selected" : ""}>${esc(x.id)}</option>`).join("")}</select>
+          <label class="small muted">Аккаунт</label>
+          <select id="pg-account"><option value="">авто (как у клиентов)</option>${acc.accounts.map((a) =>
+            `<option value="${esc(a.id)}" ${pg.account === a.id ? "selected" : ""}>${esc(a.name)}</option>`).join("")}</select>
+        </div>
+        <textarea id="pg-prompt" placeholder="${pg.mode === "image" ? "Что нарисовать" : "Сообщение"}">${esc(pg.prompt)}</textarea>
+        <div class="row"><button class="primary" id="pg-send">Отправить</button><span id="pg-timer" class="muted small"></span></div>
+      </form></div>
+      <div class="card" id="pg-result"><div class="empty">Ответ появится здесь</div></div>
+    </div>`;
+  view().querySelectorAll("[data-mode]").forEach((b) => (b.onclick = () => { pg.mode = b.dataset.mode; pg.prompt = $("#pg-prompt").value; render(); }));
+  $("#pg-form").onsubmit = async (e) => {
+    e.preventDefault();
+    Object.assign(pg, { model: $("#pg-model").value, account: $("#pg-account").value, prompt: $("#pg-prompt").value });
+    if (!pg.prompt.trim()) return;
+    const btn = $("#pg-send"), t0 = Date.now();
+    btn.disabled = true; busy = true;
+    const timer = setInterval(() => ($("#pg-timer").innerHTML = `<span class="spinner"></span> ${((Date.now() - t0) / 1000).toFixed(0)} с`), 500);
+    try {
+      const r = await api("POST", "/admin/playground", { mode: pg.mode, model: pg.model, account: pg.account || null, prompt: pg.prompt });
+      $("#pg-result").innerHTML = `<div class="row small fg2" style="margin-bottom:10px">${status("готово", "good")}
+          <span>аккаунт: <b>${esc(r.account || "—")}</b></span>${r.tried.length > 1 ? `<span>переключения: ${esc(r.tried.join(" → "))}</span>` : ""}
+          <span>${esc(r.model || "")}</span><span class="sp"></span><span>${ms(r.ms)}</span></div>
+        <div class="pg-out">${esc(r.text)}${r.images.map((b) => `<img src="data:image/jpeg;base64,${b}" alt="">`).join("")}</div>`;
+    } catch (err) {
+      $("#pg-result").innerHTML = `<div class="row" style="margin-bottom:8px">${status("ошибка", "critical")}</div><div class="err">${esc(err.message)}</div>`;
+    } finally {
+      clearInterval(timer); $("#pg-timer").textContent = ""; btn.disabled = false; busy = false;
+    }
+  };
+};
+
+PAGES.media = async () => {
+  const [v, g] = await Promise.all([api("GET", "/admin/videos"), api("GET", "/admin/gallery")]);
+  const vstat = { completed: ["готово", "good"], failed: ["ошибка", "critical"], in_progress: ["рендерится", "warning"], queued: ["в очереди", ""] };
+  view().innerHTML = head("Медиа", "видео и картинки хранятся 24 ч") + `
+    <div class="card"><h2>Видео <span class="muted small">${v.videos.length}</span></h2>
+      ${v.videos.length ? `<div class="videos">${v.videos.map((j) => `<div>
+        ${j.status === "completed" && j.has_file ? `<video controls preload="metadata" src="/admin/videos/${esc(j.id)}/content"></video>` : ""}
+        <div class="row small sec">${status(...(vstat[j.status] || [j.status, ""]))}<span class="fg2">${esc(j.account || "")}</span>
+          <span class="sp"></span><span class="muted">${rel(j.created_at)}</span></div>
+        <div class="small fg2" style="margin-top:4px">${esc(j.prompt.slice(0, 200))}</div>
+        ${j.error ? `<div class="small err">${esc(j.error.message.slice(0, 200))}</div>` : ""}</div>`).join("")}</div>` : `<div class="empty">Видео нет</div>`}
+    </div>
+    <div class="card sec"><h2>Картинки <span class="muted small">${g.images.length}</span></h2>
+      ${g.images.length ? `<div class="gallery">${g.images.map((im, i) => `<figure data-i="${i}">
+        <img loading="lazy" src="/admin/gallery/${encodeURIComponent(im.name)}" alt="">
+        <figcaption title="${esc(im.prompt)}">${esc(im.prompt || im.name)}</figcaption></figure>`).join("")}</div>` : `<div class="empty">Картинок нет</div>`}
+    </div>`;
+  view().querySelectorAll(".gallery figure").forEach((f) => (f.onclick = () => {
+    const im = g.images[+f.dataset.i], url = `/admin/gallery/${encodeURIComponent(im.name)}`;
+    lightboxName = im.name;
+    $("#lb-img").src = url; $("#lb-open").href = url; $("#lb-prompt").textContent = im.prompt || "";
+    $("#lb-meta").textContent = [clock(im.ts, true), im.model, im.account, im.key, bytes(im.size)].filter(Boolean).join(" · ");
+    $("#lightbox").showModal();
+  }));
+};
+
+PAGES.system = async () => {
+  const s = await api("GET", "/admin/system");
+  const kv = (o) => `<dl class="kv">${Object.entries(o).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join("")}</dl>`;
+  const yn = (b) => (b ? status("да", "good") : status("нет", ""));
+  view().innerHTML = head("Система") + `<div class="grid cols-2">
+    <div class="card"><h2>Прокси</h2>${kv({ "версия": esc(s.version), "gemini-webapi": esc(s.gemini_webapi), "python": esc(s.python),
+      "запущен": esc(when(s.started_at)), "память": s.rss_mb ? `${s.rss_mb} МБ` : "—", "записей в журнале": num(s.journal_records) })}</div>
+    <div class="card"><h2>Браузер для входа</h2>${kv({
+      "DevTools (CDP)": s.browser.ok ? status("доступен", "good") : status("недоступен", "critical"),
+      "версия": esc(s.browser.version || s.browser.error || "—"),
+      "noVNC": s.vnc.ok ? status("доступен", "good") : status("недоступен", "critical"),
+      "адреса": `<span class="mono">${esc(s.settings.cdp_url)}<br>${esc(s.settings.vnc_url)}</span>` })}</div>
+    <div class="card"><h2>Хранилище</h2>${kv({ "каталог данных": `<span class="mono">${esc(s.settings.data_dir)}</span>`,
+      "свободно": s.disk ? `${bytes(s.disk.free)} из ${bytes(s.disk.total)} (${Math.round((s.disk.free / s.disk.total) * 100)}%)` : "—",
+      "картинки хранятся": `${s.settings.image_keep_hours} ч`, "видео хранятся": `${s.settings.video_keep_hours} ч` })}</div>
+    <div class="card"><h2>Настройки</h2>${kv({ "источник cookies (default)": esc(s.settings.cookie_source),
+      "API key задан": yn(s.settings.api_key), "отдельный пароль админки": yn(s.settings.admin_password),
+      "таймауты чат / картинка / видео": `${s.settings.chat_timeout} / ${s.settings.image_timeout} / ${s.settings.video_timeout} с`,
+      "пауза после лимита": `${s.settings.quota_cooldown / 60} мин (видео ${s.settings.video_cooldown / 3600} ч)` })}</div>
   </div>`;
-}
+};
 
-function render() {
-  const list = data.accounts;
-  $("#accounts").innerHTML = list.length ? list.map((a, i) => card(a, i, list.length)).join("")
-    : `<div class="card muted">Аккаунтов нет. Добавь первый.</div>`;
-  const ok = list.filter((a) => a.state === "ok").length;
-  $("#summary").textContent = `${ok} из ${list.length} работают`;
+// ---- shell ---------------------------------------------------------------
+function navHtml() {
+  const bad = accountsData.accounts.filter((a) => a.enabled && a.state !== "ok").length;
+  return TABS.map(([id, label]) => `<a href="#${id}" class="${current === id ? "active" : ""}">
+    <svg viewBox="0 0 24 24" fill="currentColor">${ICON[id]}</svg>${label}
+    ${id === "accounts" && bad ? `<span class="count" style="color:var(--critical)">${bad} ⚠</span>` : ""}</a>`).join("");
 }
-
-async function refresh() {
-  if (busy) return;
-  try { data = await api("GET", "/admin/accounts"); showApp(); render(); }
-  catch (e) { if (e.message !== "Нужен вход") toast(e.message); }
+async function render() {
+  current = (location.hash.slice(1) || "overview");
+  if (!PAGES[current]) current = "overview";
+  try {
+    await PAGES[current]();
+    showApp();
+  } catch (e) { if (e.message !== "Нужен вход") toast(e.message); }
+  $("#nav").innerHTML = navHtml();
 }
-
-function showLogin() {
-  $("#login-screen").hidden = false; $("#accounts").hidden = true;
-  $("#add-btn").hidden = $("#logout-btn").hidden = true;
-}
-function showApp() {
-  $("#login-screen").hidden = true; $("#accounts").hidden = false;
-  $("#add-btn").hidden = $("#logout-btn").hidden = false;
-}
-
+function showLogin() { $("#login-screen").hidden = false; $("#app").hidden = true; }
+function showApp() { $("#login-screen").hidden = true; $("#app").hidden = false; }
 async function act(fn, okMsg) {
   busy = true;
   try { await fn(); if (okMsg) toast(okMsg); }
   catch (e) { toast(e.message); }
-  finally { busy = false; await refresh(); }
+  finally { busy = false; await render(); }
 }
+addEventListener("hashchange", () => { state.open = null; render(); });
+let resizeT; addEventListener("resize", () => { clearTimeout(resizeT); resizeT = setTimeout(() => current === "overview" && render(), 200); });
 
+// ---- accounts actions --------------------------------------------------------
 async function swap(id, dir) {
-  const list = data.accounts, i = list.findIndex((a) => a.id === id), j = i + dir;
+  const list = accountsData.accounts, i = list.findIndex((a) => a.id === id), j = i + dir;
   if (j < 0 || j >= list.length) return;
-  // Renumber so the order is unambiguous even when priorities were equal.
-  const order = list.map((a) => a.id);
-  [order[i], order[j]] = [order[j], order[i]];
-  for (const [k, aid] of order.entries()) {
-    if (list.find((a) => a.id === aid).priority !== k)
-      await api("PATCH", `/admin/accounts/${aid}`, { priority: k });
-  }
+  const order = list.map((a) => a.id); [order[i], order[j]] = [order[j], order[i]];
+  for (const [k, aid] of order.entries())
+    if (list.find((a) => a.id === aid).priority !== k) await api("PATCH", `/admin/accounts/${aid}`, { priority: k });
 }
-
 async function startSignin(a) {
   const r = await api("POST", `/admin/accounts/${a.id}/login/start`);
-  signinFor = a.id;
-  $("#signin-name").textContent = a.name;
-  $("#vnc").src = r.vnc;
-  $("#signin").showModal();
+  signinFor = a.id; $("#signin-name").textContent = a.name; $("#vnc").src = r.vnc; $("#signin").showModal();
 }
-
-$("#accounts").addEventListener("click", (ev) => {
+function addAccount() {
+  const name = prompt("Имя аккаунта (например, «pro» или «free»)");
+  if (name) act(async () => { const a = await api("POST", "/admin/accounts", { name }); await startSignin(a); });
+}
+view().addEventListener("click", (ev) => {
   const btn = ev.target.closest("button[data-act]");
   if (!btn) return;
-  const id = btn.closest(".card").dataset.id;
-  const a = data.accounts.find((x) => x.id === id);
-  const path = `/admin/accounts/${id}`;
+  const id = btn.closest("[data-id]").dataset.id, a = accountsData.accounts.find((x) => x.id === id), path = `/admin/accounts/${id}`;
   switch (btn.dataset.act) {
     case "up": return act(() => swap(id, -1));
     case "down": return act(() => swap(id, 1));
-    case "check": btn.disabled = true; btn.textContent = "Проверяю…";
-      return act(() => api("POST", `${path}/check`), "Проверено");
+    case "check": btn.disabled = true; btn.textContent = "Проверяю…"; return act(() => api("POST", `${path}/check`), "Проверено");
     case "toggle": return act(() => api("PATCH", path, { enabled: !a.enabled }));
     case "cooldowns": return act(() => api("DELETE", `${path}/cooldowns`), "Лимиты сброшены");
-    case "rename": {
-      const name = prompt("Новое имя", a.name);
-      if (name) act(() => api("PATCH", path, { name }));
-      return;
-    }
-    case "delete":
-      if (confirm(`Удалить аккаунт «${a.name}»? Сессия в прокси будет забыта.`))
-        act(() => api("DELETE", path), "Удалён");
-      return;
-    case "cookies":
-      cookiesFor = id; $("#cookies-name").textContent = a.name; $("#cookies-input").value = "";
-      $("#cookies-dlg").showModal(); return;
+    case "rename": { const n = prompt("Новое имя", a.name); if (n) act(() => api("PATCH", path, { name: n })); return; }
+    case "delete": if (confirm(`Удалить аккаунт «${a.name}»? Сессия в прокси будет забыта.`)) act(() => api("DELETE", path), "Удалён"); return;
+    case "cookies": cookiesFor = id; $("#cookies-name").textContent = a.name; $("#cookies-input").value = ""; $("#cookies-dlg").showModal(); return;
     case "signin": return act(() => startSignin(a));
   }
 });
-
-$("#signin-finish").onclick = () => act(async () => {
-  await api("POST", `/admin/accounts/${signinFor}/login/finish`);
-  $("#signin").close(); $("#vnc").src = "about:blank";
-}, "Сессия передана прокси");
+$("#signin-finish").onclick = async (e) => {
+  const b = e.currentTarget; if (b.disabled) return;
+  b.disabled = true; b.textContent = "Забираю сессию…";
+  await act(async () => { await api("POST", `/admin/accounts/${signinFor}/login/finish`); $("#signin").close(); $("#vnc").src = "about:blank"; }, "Сессия передана прокси");
+  b.disabled = false; b.textContent = "Готово — забрать сессию";
+};
 $("#signin-cancel").onclick = () => act(async () => {
-  await api("POST", `/admin/accounts/${signinFor}/login/cancel`);
-  $("#signin").close(); $("#vnc").src = "about:blank";
+  await api("POST", `/admin/accounts/${signinFor}/login/cancel`); $("#signin").close(); $("#vnc").src = "about:blank";
 });
 $("#signin").addEventListener("cancel", (e) => e.preventDefault());
-
 $("#cookies-form").onsubmit = (e) => {
   e.preventDefault();
-  act(async () => {
-    await api("POST", `/admin/accounts/${cookiesFor}/cookies`, { cookies: $("#cookies-input").value });
-    $("#cookies-dlg").close();
-  }, "Cookies сохранены");
+  act(async () => { await api("POST", `/admin/accounts/${cookiesFor}/cookies`, { cookies: $("#cookies-input").value }); $("#cookies-dlg").close(); }, "Cookies сохранены");
 };
-$("#cookies-cancel").onclick = () => $("#cookies-dlg").close();
+document.querySelectorAll("dialog [data-close]").forEach((b) => (b.onclick = () => b.closest("dialog").close()));
+$("#secret-copy").onclick = async () => {
+  const v = $("#secret-value"); v.select();
+  try { await navigator.clipboard.writeText(v.value); toast("Скопировано"); } catch { document.execCommand("copy"); toast("Скопировано"); }
+};
+$("#lb-delete").onclick = () => {
+  if (confirm("Удалить картинку?")) act(async () => { await api("DELETE", `/admin/gallery/${encodeURIComponent(lightboxName)}`); $("#lightbox").close(); });
+};
 
-$("#add-btn").onclick = () => {
-  const name = prompt("Имя аккаунта (например, «pro» или «free»)");
-  if (name) act(async () => {
-    const a = await api("POST", "/admin/accounts", { name });
-    await refresh();
-    await startSignin(a);
-  });
-};
+// ---- session, theme, refresh -------------------------------------------------
 $("#logout-btn").onclick = async () => { await api("DELETE", "/admin/session"); showLogin(); };
 $("#login-form").onsubmit = async (e) => {
   e.preventDefault();
-  try { await api("POST", "/admin/session", { password: $("#password").value }); $("#password").value = ""; refresh(); }
+  try { await api("POST", "/admin/session", { password: $("#password").value }); $("#password").value = ""; render(); }
   catch (err) { toast(err.message); }
 };
-
-refresh();
-setInterval(() => { if (!$("#signin").open && !$("#cookies-dlg").open) refresh(); }, 15000);
+function applyTheme(t) { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }
+try { applyTheme(localStorage.getItem("gop-theme")); } catch {}
+$("#theme-btn").onclick = () => {
+  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+  const cur = document.documentElement.dataset.theme || (dark ? "dark" : "light"), next = cur === "dark" ? "light" : "dark";
+  applyTheme(next); try { localStorage.setItem("gop-theme", next); } catch {}
+  if (current === "overview") render();
+};
+render();
+setInterval(() => {
+  const modal = [...document.querySelectorAll("dialog")].some((d) => d.open);
+  const sel = document.activeElement && ["SELECT", "TEXTAREA", "INPUT"].includes(document.activeElement.tagName);
+  if (!busy && !modal && !sel && ["overview", "accounts", "requests"].includes(current) && !document.hidden) {
+    if (current === "requests" && document.querySelector("tr.detail")) return;
+    render();
+  }
+}, 15000);
 </script>
 </body>
 </html>

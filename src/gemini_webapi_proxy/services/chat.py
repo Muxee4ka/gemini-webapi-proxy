@@ -20,6 +20,8 @@ from gemini_webapi_proxy.schemas import (
     ImageGenerationData,
     ImageGenerationResponse,
 )
+from gemini_webapi_proxy.services.gallery import save_to_gallery
+from gemini_webapi_proxy.stats import note
 from gemini_webapi_proxy.utils.media import materialize_reference_images, normalize_image_field
 
 QUOTA_PATTERNS = (
@@ -94,6 +96,7 @@ async def create_chat_completion(
     messages: list[ChatMessage],
 ) -> ChatCompletionResponse:
     resolved = registry.resolve_id(model)
+    note(model=resolved)
     prompt, msg_refs = _messages_to_prompt_and_refs(messages)
     ref_paths: list[Path] = []
     if msg_refs:
@@ -149,6 +152,7 @@ async def create_image_generation(
     edit: bool = False,
 ) -> ImageGenerationResponse:
     target = registry.pick_image_model(model)
+    note(model=target)
     refs = normalize_image_field(reference_images)
     ref_paths: list[Path] = []
     if refs:
@@ -195,4 +199,6 @@ async def create_image_generation(
         await pool.run(settings, target, call)
     finally:
         _remove_refs(ref_paths)
+        note(images=len(data))
+    save_to_gallery(settings, [d.b64_json for d in data if d.b64_json], prompt=prompt)
     return ImageGenerationResponse(created=int(time.time()), data=data)

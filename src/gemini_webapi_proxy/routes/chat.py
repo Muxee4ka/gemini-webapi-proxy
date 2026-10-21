@@ -32,6 +32,7 @@ from gemini_webapi_proxy.auth import require_api_key_if_configured
 from gemini_webapi_proxy.config import get_settings
 from gemini_webapi_proxy.schemas import ChatMessage
 from gemini_webapi_proxy.services.chat import create_chat_completion
+from gemini_webapi_proxy.stats import note
 
 log = logging.getLogger("gemini_webapi_proxy.compat")
 
@@ -280,6 +281,13 @@ async def chat_completions(request: Request):
         finish = "tool_calls"
         resp.choices[0].message = message
         resp.choices[0].finish_reason = finish
+    note(
+        stream=bool(body.get("stream")),
+        tools=len(tools),
+        prompt_chars=sum(len(_as_text(m.content)) for m in messages),
+        answer_chars=len(text),
+        tool_calls=len(message.get("tool_calls") or []),
+    )
     log.info(
         "compat chat model=%s tools=%d prompt_chars=%d answer_chars=%d tool_calls=%s",
         model,

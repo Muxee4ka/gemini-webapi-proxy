@@ -16,12 +16,20 @@ from fastapi.security.utils import get_authorization_scheme_param
 from starlette.requests import HTTPConnection
 
 from gemini_webapi_proxy.config import get_settings
+from gemini_webapi_proxy.keys import MASTER, key_store
+from gemini_webapi_proxy.stats import note
 
 
 def require_api_key_if_configured(request: Request) -> None:
-    """Reject requests without a matching Bearer token when ``GOP_API_KEY`` is set."""
-    expected = get_settings().api_key
-    if not expected:
+    """Reject requests without a matching Bearer token when a key is configured.
+
+    Accepted: ``GOP_API_KEY`` (the master key) or an enabled client key from the
+    admin UI.  The key's name goes into the request journal.
+    """
+    settings = get_settings()
+    expected = settings.api_key
+    clients = key_store(settings.data_dir)
+    if not expected and not clients:
         return
 
     auth = request.headers.get("Authorization") or ""
@@ -32,11 +40,16 @@ def require_api_key_if_configured(request: Request) -> None:
             detail="Missing or invalid Authorization header (expected: Bearer <GOP_API_KEY>)",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    if param != expected:
+    if expected and hmac.compare_digest(param.encode(), expected.encode()):
+        note(key=MASTER)
+        return
+    client = clients.match(param)
+    if client is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid API key",
         )
+    note(key=client.name)
 
 
 # ---- Admin UI session --------------------------------------------------------

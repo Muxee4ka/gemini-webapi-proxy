@@ -24,6 +24,7 @@ import websockets
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, WebSocket
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
+from starlette.websockets import WebSocketDisconnect
 
 from gemini_webapi_proxy.auth import (
     SESSION_COOKIE,
@@ -257,10 +258,12 @@ async def vnc_socket(ws: WebSocket) -> None:
                     await ws.send_text(data)
 
         tasks = [asyncio.create_task(to_vnc()), asyncio.create_task(to_browser())]
-        _, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         for task in pending:
             task.cancel()
+        for task in done:
+            task.exception()  # a closed tab ends one side with an error: expected
     try:
         await ws.close()
-    except RuntimeError:
+    except (RuntimeError, WebSocketDisconnect):
         pass
