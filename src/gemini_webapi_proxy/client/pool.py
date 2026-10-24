@@ -29,6 +29,7 @@ from gemini_webapi_proxy.client import curl_compat
 from gemini_webapi_proxy.client.accounts import ACCOUNTS_FILE, Account, AccountStore
 from gemini_webapi_proxy.client.quota import quota_report
 from gemini_webapi_proxy.client.registry import ModelRegistry
+from gemini_webapi_proxy.client.webapi import _LowRetryGeminiClient
 from gemini_webapi_proxy.config import Settings, get_settings
 from gemini_webapi_proxy.cookies import CookieBundle, build_source
 from gemini_webapi_proxy.cookies.session_bootstrap import bootstrap_browser_cookie_session
@@ -100,7 +101,10 @@ async def _new_client(settings: Settings, account: Account) -> GeminiClient:
     if not bundle.is_valid():
         raise RuntimeError("No session cookies (no __Secure-1PSID): sign in to this account")
 
-    client = GeminiClient(bundle.psid, bundle.psidts, proxy=account.proxy or settings.http_proxy)
+    # Our subclass: per-call ``current_retry=0`` (videos), fewer retries, trailing 1096.
+    client = _LowRetryGeminiClient(
+        bundle.psid, bundle.psidts, proxy=account.proxy or settings.http_proxy
+    )
     if bundle.extras:
         client.cookies = dict(bundle.extras)
     # The proxy owns the session once it has the cookies: the sign-in browser forgets

@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.1] — 2026-10-24 — fork Muxee4ka/gemini-webapi-proxy
+
+### Fixed
+- Videos failed with `AsyncSession.request() got an unexpected keyword argument
+  'current_retry'`: the account pool built plain `GeminiClient`s, so `current_retry=0`
+  reached curl. Pool clients are `_LowRetryGeminiClient` again, which also brings back
+  `GOP_WEBAPI_MAX_RETRY` and the trailing error 1096 tolerance for chats
+
 ## [0.2.0] — 2026-10-21 — fork Muxee4ka/gemini-webapi-proxy
 
 ### Added

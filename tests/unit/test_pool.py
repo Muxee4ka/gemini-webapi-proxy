@@ -319,3 +319,18 @@ async def test_a_blocked_address_is_not_retried_for_a_while(monkeypatch):
     slot.failed_at -= pool_module._BLOCKED_RETRY_SECONDS
     await slot.ensure(settings)
     assert calls == ["default", "default"]
+
+
+@pytest.mark.asyncio
+async def test_new_client_is_low_retry_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pool clients must take ``current_retry=0`` (videos) instead of passing it to curl."""
+    from gemini_webapi_proxy.client.accounts import Account
+    from gemini_webapi_proxy.client.webapi import _LowRetryGeminiClient
+
+    async def fake_init(self, **kwargs) -> None:
+        return None
+
+    monkeypatch.setattr(_LowRetryGeminiClient, "init", fake_init)
+    account = Account(id="a", name="a", cookies={"__Secure-1PSID": "sid", "__Secure-1PSIDTS": "ts"})
+    client = await pool_module._new_client(get_settings(), account)
+    assert isinstance(client, _LowRetryGeminiClient)
