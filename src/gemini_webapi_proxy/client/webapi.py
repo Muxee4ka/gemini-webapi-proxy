@@ -15,6 +15,7 @@ from gemini_webapi_proxy.client.base import (
     GenerationResult,
     ModelDescriptor,
 )
+from gemini_webapi_proxy.client.registry import canonical_model
 from gemini_webapi_proxy.errors import UpstreamRefusalError
 from gemini_webapi_proxy.utils.upstream_refusal import looks_like_upstream_refusal
 
@@ -45,6 +46,15 @@ class _LowRetryGeminiClient(_RealClient):
     call. gemini-webapi <= 2.1.1 read it in ``@running``; newer versions do not, so it
     is handled here.
     """
+
+    async def _fetch_user_status(self, *args: Any, **kwargs: Any) -> Any:
+        """Read the account's models, renamed to the proxy's stable names."""
+        result = await super()._fetch_user_status(*args, **kwargs)
+        registry_ = getattr(self, "_model_registry", None)
+        if registry_:
+            for key, model in list(registry_.items()):
+                registry_[key] = canonical_model(model)
+        return result
 
     async def _generate(self, *args: Any, current_retry: int | None = None, **kwargs: Any):
         generate = _GENERATE_ONCE if current_retry == 0 else _GENERATE_RETRYING

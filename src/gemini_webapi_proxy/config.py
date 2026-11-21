@@ -136,6 +136,8 @@ class Settings(BaseSettings):
         default_factory=lambda: [
             "gemini-flash",
             "gemini-pro",
+            "gemini-hydrogen",
+            "gemini-neon",
         ]
     )
 

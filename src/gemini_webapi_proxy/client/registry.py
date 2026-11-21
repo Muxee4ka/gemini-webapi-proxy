@@ -14,6 +14,46 @@ from gemini_webapi_proxy.config import REGISTRY_PATH
 IMAGE_HINTS = ("image", "imagen", "nano banana", "出图", "图片")
 TEXT_BLOCKLIST = ("tts", "audio", "music", "video")
 
+# Gemini Web renames its models (2026-11: Flash -> "4 Hydrogen", Pro -> "4 Neon",
+# Argon -> "4 Carbon", Flash Lite -> a localised "Auto") but keeps their hex ids.
+# Names clients already send keep working as aliases of the same model.
+LEGACY_NAMES: dict[str, tuple[str, ...]] = {
+    "56fdd199312815e2": (
+        "gemini-flash",
+        "gemini-3-flash",
+        "gemini-3-flash-preview",
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+    ),
+    "e6fa609c3fa255c0": (
+        "gemini-pro",
+        "gemini-3-pro",
+        "gemini-3-pro-preview",
+        "gemini-advanced",
+    ),
+    "8c46e95b1a07cecc": ("gemini-flash-lite",),
+    "95a4c0abcba24364": ("gemini-argon",),
+}
+# Models whose label is localised ("Авто"), so the library's name follows the UI language.
+_FIXED_NAMES: dict[str, str] = {"8c46e95b1a07cecc": "gemini-auto"}
+# "4 Hydrogen" -> "hydrogen": the codename without the generation number.
+_CODENAME_RE = re.compile(r"^\d+(?:\.\d+)?\s+([a-z][a-z0-9 ]*)$", re.IGNORECASE)
+
+
+def canonical_model(model: AvailableModel) -> AvailableModel:
+    """``model`` under a stable, ASCII name, with the legacy names as aliases.
+
+    gemini-webapi names a model after its category, else its display name, so the same
+    model is ``gemini-4-hydrogen`` but ``gemini-neon``, and ``gemini-авто`` on a Russian
+    account.  The proxy names it ``gemini-<codename>`` (or a fixed name), by its id.
+    """
+    name = _FIXED_NAMES.get(model.model_id)
+    if name is None:
+        match = _CODENAME_RE.match((model.description or "").strip())
+        name = f"gemini-{_slug(match.group(1))}" if match else model.model_name
+    aliases = {*model.aliases, model.model_name, name, *LEGACY_NAMES.get(model.model_id, ())}
+    return model.model_copy(update={"model_name": name, "aliases": sorted(aliases)})
+
 
 @dataclass
 class ModelEntry:
@@ -159,7 +199,14 @@ class ModelRegistry:
                 chat_ok=prev.chat_ok if prev else kind in {"chat", "both"},
                 image_ok=prev.image_ok if prev else kind == "image",
                 probed_at=prev.probed_at if prev else None,
-                aliases=_alias_candidates(m.model_name, m.description),
+                aliases=sorted(
+                    {
+                        *_alias_candidates(m.model_name, m.description),
+                        *LEGACY_NAMES.get(getattr(m, "model_id", ""), ()),
+                        *(getattr(m, "aliases", None) or ()),
+                    }
+                    - {m.model_name}
+                ),
             )
         self._ensure_image_aliases()
         self._rebuild_aliases()
@@ -262,6 +309,10 @@ class ModelRegistry:
             for alias in entry.aliases:
                 if alias in runtime:
                     return runtime[alias]
+                # the alias may name a model that Google has renamed since
+                target = self.resolve_id(alias)
+                if target != key and target in runtime:
+                    return runtime[target]
         return key
 
     def resolve_id(self, model_id: str) -> str:
