@@ -219,7 +219,7 @@ async def _run_job(settings: Settings, job: VideoJob) -> None:
                         ),
                         files=ref_paths or None,
                         model=runtime,
-                        current_retry=0,  # read by gemini-webapi's @running decorator
+                        current_retry=0,  # no retries: read by client.webapi._LowRetryGeminiClient
                     ),
                     timeout=settings.video_timeout + 30,
                 )

@@ -290,7 +290,7 @@ class TelegramBot:
                     log.warning("telegram: alert to %s: %s", chat_id, self._safe(exc))
 
     def alert_text(self, event: events.Event) -> str:
-        icon = "✅" if event.kind == "recovered" else "⚠️"
+        icon = {"recovered": "✅", "update": "🆕"}.get(event.kind, "⚠️")
         who = f" · <b>{_e(event.account)}</b>" if event.account else ""
         body = f"\n{_e(event.text)}" if event.text else ""
         return f"{icon} {_e(event.title)}{who}{body}"

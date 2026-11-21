@@ -346,3 +346,59 @@ def test_resolve_runtime_uses_the_given_account_models() -> None:
     free = [_mk("gemini-flash", "Flash", "x")]
     assert r.resolve_runtime("gemini-pro", free) == "gemini-pro"
     assert r.resolve_runtime("gemini-flash", free).model_name == "gemini-flash"
+
+
+def _available(model_id: str, name: str, display: str, desc: str):
+    from gemini_webapi.types import AvailableModel
+
+    return AvailableModel(
+        model_id=model_id,
+        model_name=name,
+        display_name=display,
+        description=desc,
+        capacity=2,
+        capacity_field=12,
+        model_number=1,
+        is_available=True,
+        aliases=[name, model_id],
+    )
+
+
+def _models_2026_11():
+    """What a Russian Pro account was shown after Gemini Web's 2026-11-20 build."""
+    from gemini_webapi_proxy.client.registry import canonical_model
+
+    return [
+        canonical_model(m)
+        for m in (
+            _available(
+                "8c46e95b1a07cecc", "gemini-авто", "Авто", "Адаптируется к вашим потребностям"
+            ),
+            _available("56fdd199312815e2", "gemini-4-hydrogen", "Повседневные дела", "4 Hydrogen"),
+            _available("e6fa609c3fa255c0", "gemini-neon", "Глубокий анализ", "4 Neon"),
+            _available("95a4c0abcba24364", "gemini-carbon", "Код и сложные задачи", "4 Carbon"),
+        )
+    ]
+
+
+def test_canonical_model_names_by_codename() -> None:
+    names = [m.model_name for m in _models_2026_11()]
+    assert names == ["gemini-auto", "gemini-hydrogen", "gemini-neon", "gemini-carbon"]
+
+
+def test_legacy_names_resolve_to_renamed_models() -> None:
+    r = ModelRegistry()
+    models = _models_2026_11()
+    r.sync_from_client(models)
+    assert r.resolve_id("gemini-flash") == "gemini-hydrogen"
+    assert r.resolve_id("gemini-3-flash-preview") == "gemini-hydrogen"
+    assert r.resolve_id("gemini-pro") == "gemini-neon"
+    assert r.resolve_id("gemini-argon") == "gemini-carbon"
+    assert r.resolve_id("gemini-flash-lite") == "gemini-auto"
+    assert r.resolve_id("gemini-4-hydrogen") == "gemini-hydrogen"
+    assert r.resolve_runtime("gemini-argon", models).model_id == "95a4c0abcba24364"
+    # stable image aliases still reach the renamed Flash / Pro
+    assert r.resolve_runtime("gemini-2.5-flash-image", models).model_id == "56fdd199312815e2"
+    assert r.resolve_runtime("gemini-2.5-pro-image", models).model_id == "e6fa609c3fa255c0"
+    ids = {m["id"] for m in r.list_openai_models()}
+    assert {"gemini-hydrogen", "gemini-neon", "gemini-carbon", "gemini-auto"} <= ids

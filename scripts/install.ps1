@@ -69,6 +69,16 @@ $portSetting = if ($settings["GOP_PORT"]) { $settings["GOP_PORT"] } else { "4982
 
 New-Item -ItemType Directory -Force -Path data | Out-Null
 
+# The admin UI shows the build and what is newer on GitHub (System tab, Updates).
+if (Get-Command git -ErrorAction SilentlyContinue) {
+    $commit = git rev-parse HEAD 2>$null
+    if ($LASTEXITCODE -eq 0) {
+        $env:GOP_BUILD_COMMIT = $commit
+        $env:GOP_BUILD_BRANCH = git rev-parse --abbrev-ref HEAD
+        $env:GOP_BUILD_DATE = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+    }
+}
+
 Write-Host "== Building images (first run takes a few minutes)"
 docker compose build
 if ($LASTEXITCODE -ne 0) { Write-Error "docker compose build failed" }

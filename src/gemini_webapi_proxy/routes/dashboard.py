@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from gemini_webapi_proxy import __version__
+from gemini_webapi_proxy import __version__, updates
 from gemini_webapi_proxy.auth import require_admin
 from gemini_webapi_proxy.client.pool import pinned, pool, registry
 from gemini_webapi_proxy.config import get_settings
@@ -230,6 +230,7 @@ async def system() -> dict:
     return {
         "version": __version__,
         "gemini_webapi": metadata.version("gemini-webapi"),
+        "build": updates.build_info(settings),
         "python": platform.python_version(),
         "started_at": STARTED_AT,
         "rss_mb": _rss_mb(),
@@ -254,6 +255,31 @@ async def system() -> dict:
             "image_keep_hours": settings.image_keep_hours,
             "video_keep_hours": settings.video_keep_hours,
         },
+    }
+
+
+# ---- Updates -------------------------------------------------------------------
+@router.get("/updates")
+async def updates_state() -> dict:
+    settings = get_settings()
+    return {
+        "build": updates.build_info(settings),
+        "check": updates.state or None,
+        "auto_hours": settings.update_check_hours,
+    }
+
+
+@router.post("/updates/check")
+async def updates_check() -> dict:
+    settings = get_settings()
+    try:
+        result = await updates.check(settings)
+    except Exception as exc:
+        raise HTTPException(502, f"GitHub: {exc}") from exc
+    return {
+        "build": updates.build_info(settings),
+        "check": result,
+        "auto_hours": settings.update_check_hours,
     }
 
 

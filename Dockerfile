@@ -24,11 +24,14 @@ RUN export http_proxy="$GOP_BUILD_HTTP_PROXY" https_proxy="$GOP_BUILD_HTTP_PROXY
 WORKDIR /build
 
 # Dependencies first (read from pyproject.toml) so a code change keeps this layer cached.
+# git is only for the gemini-webapi git pin (see pyproject.toml) and leaves in the same layer.
 COPY pyproject.toml ./
 RUN export http_proxy="$GOP_BUILD_HTTP_PROXY" https_proxy="$GOP_BUILD_HTTP_PROXY" && \
+    apt-get update && apt-get install -y --no-install-recommends git && \
     python -c "import tomllib; print('\n'.join(tomllib.load(open('pyproject.toml', 'rb'))['project']['dependencies']))" \
         > requirements.txt && \
-    pip install -r requirements.txt
+    pip install -r requirements.txt && \
+    apt-get purge -y --auto-remove git && rm -rf /var/lib/apt/lists/*
 
 COPY README.md LICENSE NOTICE ./
 COPY src ./src
@@ -38,6 +41,15 @@ RUN export http_proxy="$GOP_BUILD_HTTP_PROXY" https_proxy="$GOP_BUILD_HTTP_PROXY
 
 RUN mkdir -p /app/data
 WORKDIR /app
+
+# Shown in the admin UI and used to tell what is newer on GitHub; last, so a new commit
+# only invalidates this layer. scripts/install.sh passes them from git.
+ARG GOP_BUILD_COMMIT=""
+ARG GOP_BUILD_BRANCH=""
+ARG GOP_BUILD_DATE=""
+ENV GOP_BUILD_COMMIT=$GOP_BUILD_COMMIT \
+    GOP_BUILD_BRANCH=$GOP_BUILD_BRANCH \
+    GOP_BUILD_DATE=$GOP_BUILD_DATE
 VOLUME ["/app/data"]
 
 EXPOSE 4982
